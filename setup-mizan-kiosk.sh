@@ -4,7 +4,7 @@
 # It prepares Ubuntu to run only the Mizan kiosk app.
 #
 # Usage:
-#   sudo KIOSK_USER=mizan PROJECT_DIR=/home/mizan/Mizan ./setup-mizan-kiosk.sh
+#   sudo KIOSK_USER=anuye PROJECT_DIR=/home/anuye/Mizan ./setup-mizan-kiosk.sh
 #
 # Notes:
 # - This script is Ubuntu-oriented (apt, systemd, gdm3).
@@ -14,12 +14,15 @@ set -euo pipefail
 
 # ── Customize these ───────────────────────────────────────────────────────────
 
-KIOSK_USER="${KIOSK_USER:-mizan}"
+KIOSK_USER="${KIOSK_USER:-anuye}"
 PROJECT_DIR="${PROJECT_DIR:-/home/$KIOSK_USER/Mizan}"
 
 FRONTEND_PORT="${FRONTEND_PORT:-43997}"
 BACKEND_PORT="${BACKEND_PORT:-8000}"
 BACKEND_HOST="${BACKEND_HOST:-127.0.0.1}"
+
+# If false, skip desktop Chromium autostart (~/.config/autostart), GDM autologin, and related setup.
+ENABLE_DESKTOP_KIOSK="${ENABLE_DESKTOP_KIOSK:-true}"
 
 NODE_MAJOR="${NODE_MAJOR:-20}"
 
@@ -187,6 +190,7 @@ apt-get install -y \
   build-essential \
   chromium-browser \
   unclutter \
+  x11-xserver-utils \
   xdotool
 
 # ── Optional cleanup ──────────────────────────────────────────────────────────
@@ -414,18 +418,9 @@ fi
 info "Disabling sleep, suspend, and hibernate..."
 systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target || true
 
-info "Disabling screen blanking for graphical sessions..."
-mkdir -p "/home/$KIOSK_USER/.config/autostart"
-
-cat > "/home/$KIOSK_USER/.config/autostart/mizan-display.desktop" <<'EOF'
-[Desktop Entry]
-Type=Application
-Name=Mizan Display Settings
-Exec=sh -c "xset s off; xset -dpms; xset s noblank; unclutter -idle 1 -root"
-X-GNOME-Autostart-enabled=true
-EOF
-
-chown -R "$KIOSK_USER:$KIOSK_USER" "/home/$KIOSK_USER/.config"
+if [ "$ENABLE_DESKTOP_KIOSK" != "true" ]; then
+  info "ENABLE_DESKTOP_KIOSK=false; skipping desktop Chromium autostart and GDM autologin."
+fi
 
 # ── Disable unnecessary services for kiosk mode ───────────────────────────────
 
@@ -585,48 +580,130 @@ StandardError=journal
 WantedBy=multi-user.target
 EOF
 
-# ── User systemd kiosk browser service ────────────────────────────────────────
+# ── Desktop Autostart Chromium Kiosk ──────────────────────────────────────────
+# Graphical apps like Chromium are more reliable when launched from the user's
+# desktop session instead of a systemd user service.
 
-info "Creating Chromium kiosk service for user $KIOSK_USER..."
+if [ "$ENABLE_DESKTOP_KIOSK" = "true" ]; then
+  info "Creating desktop autostart kiosk launcher for $KIOSK_USER..."
 
-mkdir -p "/home/$KIOSK_USER/.config/systemd/user"
+  apt-get install -y curl unclutter x11-xserver-utils
 
-cat > "/home/$KIOSK_USER/.config/systemd/user/mizan-kiosk.service" <<EOF
-[Unit]
-Description=Mizan Chromium Kiosk
-After=graphical-session.target
+  mkdir -p "/home/$KIOSK_USER/.local/bin"
+  mkdir -p "/home/$KIOSK_USER/.config/autostart"
 
-[Service]
-Type=simple
-ExecStart=/usr/bin/chromium-browser --kiosk --noerrdialogs --disable-infobars --disable-session-crashed-bubble --disable-features=TranslateUI --overscroll-history-navigation=0 --start-maximized http://$BACKEND_HOST:$FRONTEND_PORT
-Restart=always
-RestartSec=5
+  cat > "/home/$KIOSK_USER/.local/bin/start-mizan-kiosk.sh" <<EOF
+#!/usr/bin/env bash
 
-[Install]
-WantedBy=default.target
+set -u
+
+URL="http://$BACKEND_HOST:$FRONTEND_PORT"
+LOG="/home/$KIOSK_USER/.mizan-kiosk.log"
+
+echo "[mizan-kiosk] Starting at \$(date)" >> "\$LOG"
+echo "[mizan-kiosk] Waiting for \$URL" >> "\$LOG"
+
+# Wait for frontend to be ready.
+for i in \$(seq 1 90); do
+  if curl -sf "\$URL" >/dev/null 2>&1; then
+    echo "[mizan-kiosk] Frontend ready" >> "\$LOG"
+    break
+  fi
+
+  if [ "\$i" -eq 90 ]; then
+    echo "[mizan-kiosk] Frontend did not respond after 90s" >> "\$LOG"
+  fi
+
+  sleep 1
+done
+
+# Prevent blanking/sleep inside X session.
+xset s off 2>/dev/null || true
+xset -dpms 2>/dev/null || true
+xset s noblank 2>/dev/null || true
+
+# Hide cursor.
+pkill unclutter 2>/dev/null || true
+unclutter -idle 1 -root 2>/dev/null &
+
+# Close any old Chromium/Chrome windows from previous failed launches.
+pkill -f 'chromium.*${BACKEND_HOST}:${FRONTEND_PORT}' 2>/dev/null || true
+pkill -f 'chrome.*${BACKEND_HOST}:${FRONTEND_PORT}' 2>/dev/null || true
+
+# Pick available browser.
+if command -v chromium-browser >/dev/null 2>&1; then
+  CHROME="chromium-browser"
+elif command -v chromium >/dev/null 2>&1; then
+  CHROME="chromium"
+elif command -v google-chrome >/dev/null 2>&1; then
+  CHROME="google-chrome"
+else
+  echo "[mizan-kiosk] No Chromium/Chrome binary found" >> "\$LOG"
+  exit 1
+fi
+
+echo "[mizan-kiosk] Launching \$CHROME \$URL" >> "\$LOG"
+
+exec "\$CHROME" \\
+  --kiosk \\
+  --noerrdialogs \\
+  --disable-infobars \\
+  --disable-session-crashed-bubble \\
+  --disable-features=TranslateUI \\
+  --overscroll-history-navigation=0 \\
+  --start-maximized \\
+  --autoplay-policy=no-user-gesture-required \\
+  "\$URL"
 EOF
 
-chown -R "$KIOSK_USER:$KIOSK_USER" "/home/$KIOSK_USER/.config/systemd"
+  chmod +x "/home/$KIOSK_USER/.local/bin/start-mizan-kiosk.sh"
 
-# ── Enable autologin for GDM if present ───────────────────────────────────────
+  cat > "/home/$KIOSK_USER/.config/autostart/mizan-kiosk.desktop" <<EOF
+[Desktop Entry]
+Type=Application
+Name=Mizan Kiosk
+Comment=Start Mizan in Chromium kiosk mode
+Exec=/home/$KIOSK_USER/.local/bin/start-mizan-kiosk.sh
+Terminal=false
+X-GNOME-Autostart-enabled=true
+EOF
 
-if [ -f /etc/gdm3/custom.conf ]; then
-  info "Configuring GDM autologin for $KIOSK_USER..."
+  chmod +x "/home/$KIOSK_USER/.config/autostart/mizan-kiosk.desktop"
+  chown -R "$KIOSK_USER:$KIOSK_USER" "/home/$KIOSK_USER/.local" "/home/$KIOSK_USER/.config/autostart"
 
-  cp /etc/gdm3/custom.conf /etc/gdm3/custom.conf.bak.$(date +%Y%m%d%H%M%S)
+  # Disable old user systemd kiosk service if it exists, to avoid launching twice.
+  sudo -u "$KIOSK_USER" -H systemctl --user disable --now mizan-kiosk.service 2>/dev/null || true
+  sudo -u "$KIOSK_USER" -H systemctl --user reset-failed 2>/dev/null || true
+  rm -f "/home/$KIOSK_USER/.config/systemd/user/mizan-kiosk.service"
 
-  sed -i 's/^#\\?AutomaticLoginEnable.*/AutomaticLoginEnable = true/' /etc/gdm3/custom.conf || true
-  sed -i "s/^#\\?AutomaticLogin.*/AutomaticLogin = $KIOSK_USER/" /etc/gdm3/custom.conf || true
+  info "Desktop autostart kiosk launcher created."
+fi
 
-  if ! grep -q '^AutomaticLoginEnable' /etc/gdm3/custom.conf; then
-    sed -i '/^\\[daemon\\]/a AutomaticLoginEnable = true' /etc/gdm3/custom.conf
+# ── Enable autologin for GDM ──────────────────────────────────────────────────
+
+if [ "$ENABLE_DESKTOP_KIOSK" = "true" ]; then
+  if [ -f /etc/gdm3/custom.conf ]; then
+    info "Configuring GDM autologin for $KIOSK_USER..."
+
+    cp /etc/gdm3/custom.conf "/etc/gdm3/custom.conf.bak.$(date +%Y%m%d%H%M%S)"
+
+    # Ensure [daemon] section exists.
+    if ! grep -q '^\[daemon\]' /etc/gdm3/custom.conf; then
+      printf '\n[daemon]\n' >> /etc/gdm3/custom.conf
+    fi
+
+    # Remove existing autologin lines to avoid duplicates.
+    sed -i '/^[[:space:]]*AutomaticLoginEnable[[:space:]]*=.*/d' /etc/gdm3/custom.conf
+    sed -i '/^[[:space:]]*AutomaticLogin[[:space:]]*=.*/d' /etc/gdm3/custom.conf
+
+    # Insert fresh values after [daemon].
+    sed -i "/^\[daemon\]/a AutomaticLogin = $KIOSK_USER" /etc/gdm3/custom.conf
+    sed -i "/^\[daemon\]/a AutomaticLoginEnable = true" /etc/gdm3/custom.conf
+
+    info "GDM autologin configured for $KIOSK_USER."
+  else
+    warn "GDM config not found at /etc/gdm3/custom.conf. Autologin was not configured."
   fi
-
-  if ! grep -q '^AutomaticLogin' /etc/gdm3/custom.conf; then
-    sed -i \"/^\\[daemon\\]/a AutomaticLogin = $KIOSK_USER\" /etc/gdm3/custom.conf
-  fi
-else
-  warn "GDM config not found. Autologin was not configured."
 fi
 
 # ── Enable services ───────────────────────────────────────────────────────────
@@ -637,10 +714,9 @@ systemctl daemon-reload
 systemctl enable mizan-backend.service
 systemctl enable mizan-frontend.service
 
-loginctl enable-linger "$KIOSK_USER" || true
-
-run_as_kiosk_user "systemctl --user daemon-reload"
-run_as_kiosk_user "systemctl --user enable mizan-kiosk.service"
+if [ "$ENABLE_DESKTOP_KIOSK" = "true" ]; then
+  run_as_kiosk_user "systemctl --user daemon-reload" 2>/dev/null || true
+fi
 
 # ── Start services if project exists ──────────────────────────────────────────
 
@@ -673,8 +749,13 @@ echo "  sudo systemctl status mizan-backend"
 echo "  sudo systemctl status mizan-frontend"
 echo "  journalctl -u mizan-backend -f"
 echo "  journalctl -u mizan-frontend -f"
-echo "  sudo -u $KIOSK_USER systemctl --user status mizan-kiosk"
-echo ""
-echo -e "${YELLOW}Reboot to test full kiosk autostart:${NC}"
-echo "  sudo reboot"
+if [ "$ENABLE_DESKTOP_KIOSK" = "true" ]; then
+  echo "  tail -f /home/$KIOSK_USER/.mizan-kiosk.log"
+  echo ""
+  echo -e "${YELLOW}Reboot to test full kiosk autostart:${NC}"
+  echo "  sudo reboot"
+else
+  echo ""
+  echo -e "${YELLOW}ENABLE_DESKTOP_KIOSK=false:${NC} start Chromium or a browser manually to $BACKEND_HOST:$FRONTEND_PORT"
+fi
 echo ""
