@@ -12,9 +12,6 @@
 
 set -euo pipefail
 
-# Directory containing this script (works when you run: sudo /path/to/Mizan/setup-mizan-kiosk.sh).
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
 # ── Customize these ───────────────────────────────────────────────────────────
 
 KIOSK_USER="${KIOSK_USER:-anuye}"
@@ -78,6 +75,8 @@ confirm() {
   fi
 }
 
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
 run_as_kiosk_user() {
   sudo -u "$KIOSK_USER" -H bash -lc "$*"
 }
@@ -86,6 +85,9 @@ run_as_kiosk_user() {
 
 require_root
 confirm
+
+# Directory containing this script (works when you run: sudo /path/to/Mizan/setup-mizan-kiosk.sh).
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Default PROJECT_DIR is /home/$KIOSK_USER/Mizan; clones are often ~/mizan (lowercase) or you run this script from inside the repo.
 if [ ! -f "$PROJECT_DIR/backend/data/config.yaml" ]; then
@@ -511,27 +513,63 @@ if [ "$DISABLE_EXTRA_SERVICES" = "true" ]; then
   info "Kiosk service cleanup complete."
 fi
 
-# ── Project setup ─────────────────────────────────────────────────────────────
+# ── Fix project ownership ─────────────────────────────────────────────────────
 
-if [ ! -d "$PROJECT_DIR" ]; then
-  warn "Project directory does not exist: $PROJECT_DIR"
-  warn "Create it or clone your repo there before starting services."
+if [ -d "$PROJECT_DIR" ]; then
+  info "Fixing ownership for $PROJECT_DIR..."
+  chown -R "$KIOSK_USER:$KIOSK_USER" "$PROJECT_DIR"
+  chmod -R u+rwX "$PROJECT_DIR"
 else
-  info "Project found at $PROJECT_DIR"
+  warn "Project directory does not exist: $PROJECT_DIR"
+fi
 
-  if [ -f "$PROJECT_DIR/package.json" ]; then
-    info "Installing frontend dependencies..."
-    run_as_kiosk_user "cd '$PROJECT_DIR' && npm ci --silent --no-audit"
+# ── Frontend install/build ────────────────────────────────────────────────────
 
-    info "Building frontend..."
-    run_as_kiosk_user "cd '$PROJECT_DIR' && VITE_ASSISTANT_URL='http://$BACKEND_HOST:$BACKEND_PORT' npm run build"
-  fi
+if [ -f "$PROJECT_DIR/package.json" ]; then
+  info "Installing frontend dependencies as $KIOSK_USER..."
 
-  if [ -f "$PROJECT_DIR/backend/requirements.txt" ]; then
-    info "Setting up backend venv..."
-    run_as_kiosk_user "cd '$PROJECT_DIR/backend' && python3 -m venv .venv"
-    run_as_kiosk_user \"cd '$PROJECT_DIR/backend' && . .venv/bin/activate && python3 -m pip install --upgrade pip && python3 -m pip install -r requirements.txt\"
-  fi
+  run_as_kiosk_user "
+    cd '$PROJECT_DIR' &&
+    npm ci --no-audit
+  "
+
+  info "Ensuring serve is installed..."
+  run_as_kiosk_user "
+    cd '$PROJECT_DIR' &&
+    npm install --no-audit --save-dev serve
+  "
+
+  info "Building frontend..."
+  run_as_kiosk_user "
+    cd '$PROJECT_DIR' &&
+    VITE_ASSISTANT_URL='http://$BACKEND_HOST:$BACKEND_PORT' npm run build
+  "
+
+  chown -R "$KIOSK_USER:$KIOSK_USER" "$PROJECT_DIR"
+else
+  warn "No package.json found at $PROJECT_DIR; skipping frontend install/build."
+fi
+
+# ── Backend venv/install ──────────────────────────────────────────────────────
+
+if [ -f "$PROJECT_DIR/backend/requirements.txt" ]; then
+  info "Setting up backend virtual environment as $KIOSK_USER..."
+
+  run_as_kiosk_user "
+    cd '$PROJECT_DIR/backend' &&
+    [ -d .venv ] || python3 -m venv .venv
+  "
+
+  run_as_kiosk_user "
+    cd '$PROJECT_DIR/backend' &&
+    . .venv/bin/activate &&
+    python -m pip install --upgrade pip &&
+    python -m pip install -r requirements.txt
+  "
+
+  chown -R "$KIOSK_USER:$KIOSK_USER" "$PROJECT_DIR/backend"
+else
+  warn "No backend requirements.txt found; skipping backend setup."
 fi
 
 # ── systemd backend service ───────────────────────────────────────────────────
@@ -586,7 +624,7 @@ WorkingDirectory=$PROJECT_DIR
 
 Environment=SERVE_PORT=$FRONTEND_PORT
 
-ExecStart=$PROJECT_DIR/node_modules/.bin/serve -s dist -l $FRONTEND_PORT --single
+ExecStart=$PROJECT_DIR/node_modules/.bin/serve -s dist -l tcp://127.0.0.1:$FRONTEND_PORT --single
 
 Restart=always
 RestartSec=5
