@@ -1,0 +1,97 @@
+# ─────────────────────────────────────────────────────────────
+#  Mizan Assistant — RAG Backend Configuration
+#  Copy / rename this file; all sections are optional overrides.
+# ─────────────────────────────────────────────────────────────
+
+server:
+  port: 8000
+  cors_origins:
+    - "http://localhost:5173"
+    - "http://127.0.0.1:5173"
+    - "http://localhost:4173"
+    - "http://127.0.0.1:4173"
+    - "http://localhost:3000"
+    - "http://127.0.0.1:3000"
+
+ollama:
+  base_url: "http://localhost:11434"
+  chat_model: "aya:latest"          # used for task requests
+  chat_model_fast: "llama3.2:latest" # used for chat-only (greetings, intros, etc.)
+  embed_model: "nomic-embed-text"
+  timeout_seconds: 90
+  max_context_turns: 12   # conversation turns kept in Ollama window
+
+rag:
+  top_k: 5                 # KB documents injected per query
+  min_score: 0.25          # cosine-similarity threshold (0–1)
+  keyword_fallback: true   # fall back to keyword search when no embedding match
+
+assistant:
+  name: "Mizan"
+  persona: >
+    You are a warm, wise, and practical helper for a Muslim family (Mom, Dad, and
+    one young child) living in a small 2-bedroom apartment in Portland, Oregon.
+    Be gentle, realistic, and encouraging. Both parents are rebuilding their Iman
+    with limited energy. Only suggest tenant-friendly tasks (surface cleaning,
+    organizing, decluttering). Prefer small, sustainable actions under 20 minutes.
+    Balance Iman, parenting, and home care.
+
+  response_format: json    # "json" → structured {message, tasks, memory_updates}
+                           # "text" → plain chat reply, no tasks parsed
+
+  task_rules:
+    - "For broad goals (clean the house, weekly plan): suggest 10–15 tasks."
+    - "For quick requests (what's next, light day): suggest 5–9 tasks."
+    - "For Iman goals: prefer tiny sustainable steps (5 min dhikr, 1 page Quran)."
+    - "Do not repeat any pending or recently completed tasks."
+    - "Alternate assignees to balance the load."
+    - "Use 'daily' for habits, 'weekly' for recurring chores, 'once' for one-offs."
+    - "Only add to memory_updates when the user EXPLICITLY says 'remember that', 'save this', or 'note that'. Never add memory_updates automatically."
+
+  members:
+    - name: "Mom"
+      role: "parent"
+    - name: "Dad"
+      role: "parent"
+    - name: "Zayd"
+      role: "child"
+      too_young_for_tasks: true
+
+  constraints:
+    - "HVAC, coils, or any internal appliance servicing"
+    - "structural repairs, roofing, or building exterior"
+    - "landlord-managed systems or communal areas"
+    - "exterior window cleaning or landscaping"
+
+# ── Seed Knowledge Base ──────────────────────────────────────
+# These documents are loaded on first run (when kb.json is empty).
+# Each has a category tag for filtering and retrieval display.
+knowledge_base:
+  seed_documents:
+    - category: "family_profile"
+      content: >
+        Family lives in a small 2-bedroom apartment in Portland, Oregon.
+        Two parents (Mom and Dad) and one young child named Zayd who is too little
+        for chores. Both parents are working on rebuilding their Islamic practice
+        (Iman) with limited energy.
+
+    - category: "home_constraints"
+      content: >
+        Tenant rules: never suggest HVAC servicing, coil cleaning, structural
+        repairs, roofing work, exterior work, landlord-managed systems, communal
+        area maintenance, or exterior window cleaning/landscaping.
+        Only suggest tenant-friendly surface cleaning, organizing, decluttering.
+
+    - category: "islamic_guidance"
+      content: >
+        Islamic focus areas: consistent 5 daily prayers (Fajr, Dhuhr, Asr,
+        Maghrib, Isha), Quran reading (even 1 page daily is meaningful),
+        morning/evening adhkar (5 minutes counts), family dua together,
+        teaching Zayd simple duas and Islamic manners.
+
+    - category: "task_guidelines"
+      content: >
+        Task design principles: keep each task under 20 minutes, realistic for
+        tired parents, achievable during nap time or between prayers.
+        Avoid anything requiring sustained physical effort or long focus.
+        Small wins build consistency better than ambitious plans.

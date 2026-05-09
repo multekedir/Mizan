@@ -1,0 +1,46 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Quicksand:wght@400;500;600;700&family=Caveat:wght@500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer components {
+  .card-mizan {
+    @apply bg-mizan-surface rounded-kiosk-xl border border-mizan-border/35 shadow-kiosk-soft;
+  }
+}
+
+/* Kiosk: reduce accidental zoom, selection, pull-to-refresh feel */
+html {
+  touch-action: manipulation;
+  -webkit-text-size-adjust: 100%;
+}
+
+html,
+body {
+  overscroll-behavior-y: none;
+  overscroll-behavior-x: none;
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Allow selection in import modal inputs */
+.kiosk-allow-select,
+.kiosk-allow-select input,
+.kiosk-allow-select textarea {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(7, 26, 22, 0.18);
+  border-radius: 4px;
+}

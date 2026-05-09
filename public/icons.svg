@@ -1,0 +1,169 @@
+<!--
+  SVG sprite for Daylight. Use inline or via <use>:
+  <svg width="32" height="32" aria-hidden="true"><use href="/icons.svg#daylight-mark" /></svg>
+-->
+<svg xmlns="http://www.w3.org/2000/svg" style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true">
+  <defs>
+    <linearGradient id="dl-gold" x1="250" y1="220" x2="780" y2="820" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFE7A6"/>
+      <stop offset="1" stop-color="#D2A04A"/>
+    </linearGradient>
+    <radialGradient id="dl-glow" cx="512" cy="560" r="350" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#F6D889" stop-opacity="0.4"/>
+      <stop offset="70%" stop-color="#F6D889" stop-opacity="0.1"/>
+      <stop offset="100%" stop-color="#F6D889" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Glyph-only mark (no background). Use inside circular buttons/badges. -->
+  <symbol id="mizan-glyph" viewBox="0 0 1024 1024">
+    <defs>
+      <!-- Punch lantern windows out as transparent holes -->
+      <mask id="dl-lantern-window-cut">
+        <rect x="0" y="0" width="1024" height="1024" fill="white"/>
+        <path
+          d="M488 672
+             V552
+             C488 525 512 502 512 502
+             C512 502 536 525 536 552
+             V672
+             H488Z"
+          fill="black"
+        />
+        <path
+          d="M456 664
+             V560
+             C456 535 476 518 476 518
+             V664
+             H456Z"
+          fill="black"
+        />
+        <path
+          d="M548 664
+             V518
+             C548 518 568 535 568 560
+             V664
+             H548Z"
+          fill="black"
+        />
+      </mask>
+    </defs>
+
+    <path
+      d="M252 506
+         C252 480 263 456 283 439
+         L462 288
+         C491 263 533 263 562 288
+         L741 439
+         C761 456 772 480 772 506
+         V724
+         C772 767 737 802 694 802
+         H330
+         C287 802 252 767 252 724
+         V506Z"
+      stroke="url(#dl-gold)"
+      stroke-width="36"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    />
+    <g fill="url(#dl-gold)">
+      <circle cx="512" cy="335" r="10"/>
+      <circle cx="512" cy="365" r="8"/>
+      <circle cx="512" cy="390" r="6"/>
+    </g>
+    <g>
+      <path
+        d="M456 460
+           L512 428
+           L568 460
+           V477
+           H456
+           V460Z"
+        fill="url(#dl-gold)"
+      />
+      <path
+        d="M438 488
+           C438 488 431 640 452 690
+           H572
+           C593 640 586 488 586 488
+           H438Z"
+        fill="url(#dl-gold)"
+        mask="url(#dl-lantern-window-cut)"
+      />
+      <rect x="464" y="700" width="96" height="22" rx="8" fill="url(#dl-gold)"/>
+      <rect x="434" y="482" width="156" height="11" rx="4" fill="url(#dl-gold)"/>
+    </g>
+  </symbol>
+
+  <symbol id="daylight-mark" viewBox="0 0 1024 1024">
+    <rect width="1024" height="1024" rx="228" fill="#173B34"/>
+    <circle cx="512" cy="560" r="300" fill="url(#dl-glow)"/>
+    <path
+      d="M252 506
+         C252 480 263 456 283 439
+         L462 288
+         C491 263 533 263 562 288
+         L741 439
+         C761 456 772 480 772 506
+         V724
+         C772 767 737 802 694 802
+         H330
+         C287 802 252 767 252 724
+         V506Z"
+      stroke="url(#dl-gold)"
+      stroke-width="36"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    />
+    <g fill="url(#dl-gold)">
+      <circle cx="512" cy="335" r="10"/>
+      <circle cx="512" cy="365" r="8"/>
+      <circle cx="512" cy="390" r="6"/>
+    </g>
+    <g>
+      <path
+        d="M456 460
+           L512 428
+           L568 460
+           V477
+           H456
+           V460Z"
+        fill="url(#dl-gold)"
+      />
+      <path
+        d="M438 488
+           C438 488 431 640 452 690
+           H572
+           C593 640 586 488 586 488
+           H438Z"
+        fill="url(#dl-gold)"
+      />
+      <rect x="464" y="700" width="96" height="22" rx="8" fill="url(#dl-gold)"/>
+      <g fill="#173B34">
+        <path
+          d="M488 672
+             V552
+             C488 525 512 502 512 502
+             C512 502 536 525 536 552
+             V672
+             H488Z"
+        />
+        <path
+          d="M456 664
+             V560
+             C456 535 476 518 476 518
+             V664
+             H456Z"
+        />
+        <path
+          d="M548 664
+             V518
+             C548 518 568 535 568 560
+             V664
+             H548Z"
+        />
+      </g>
+      <rect x="434" y="482" width="156" height="11" rx="4" fill="url(#dl-gold)"/>
+    </g>
+  </symbol>
+</svg>
