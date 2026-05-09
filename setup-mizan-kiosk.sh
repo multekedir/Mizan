@@ -12,6 +12,9 @@
 
 set -euo pipefail
 
+# Directory containing this script (works when you run: sudo /path/to/Mizan/setup-mizan-kiosk.sh).
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # ── Customize these ───────────────────────────────────────────────────────────
 
 KIOSK_USER="${KIOSK_USER:-anuye}"
@@ -83,6 +86,20 @@ run_as_kiosk_user() {
 
 require_root
 confirm
+
+# Default PROJECT_DIR is /home/$KIOSK_USER/Mizan; clones are often ~/mizan (lowercase) or you run this script from inside the repo.
+if [ ! -f "$PROJECT_DIR/backend/data/config.yaml" ]; then
+  _cfg_alt=""
+  if [ -f "$SCRIPT_DIR/backend/data/config.yaml" ]; then
+    _cfg_alt="$SCRIPT_DIR"
+  elif [ -f "/home/$KIOSK_USER/mizan/backend/data/config.yaml" ]; then
+    _cfg_alt="/home/$KIOSK_USER/mizan"
+  fi
+  if [ -n "$_cfg_alt" ]; then
+    info "backend/data/config.yaml not found under PROJECT_DIR=$PROJECT_DIR; using $_cfg_alt"
+    PROJECT_DIR="$_cfg_alt"
+  fi
+fi
 
 # ── Disable old MyHomeAtahn autostart ─────────────────────────────────────────
 
@@ -410,7 +427,8 @@ if [ -f "$CONFIG_FILE" ]; then
     info "PRUNE_OLLAMA_MODELS=false; leaving all Ollama models installed."
   fi
 else
-  warn "Backend config not found at $CONFIG_FILE; skipping model pulls."
+  warn "Backend config not found at $CONFIG_FILE; skipping Ollama model pull/prune."
+  warn "Clone https://github.com/multekedir/Mizan.git to $PROJECT_DIR (or your path) so backend/data/config.yaml exists, or set PROJECT_DIR to the repo root."
 fi
 
 # ── Power / screen settings ───────────────────────────────────────────────────
