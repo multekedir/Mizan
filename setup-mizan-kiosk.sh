@@ -29,6 +29,9 @@ MINIMAL_DESKTOP="${MINIMAL_DESKTOP:-true}"
 # Disable common background services that are unnecessary on a dedicated kiosk.
 DISABLE_EXTRA_SERVICES="${DISABLE_EXTRA_SERVICES:-true}"
 
+# If true, purges PostgreSQL packages and data dirs (if installed).
+REMOVE_POSTGRES="${REMOVE_POSTGRES:-false}"
+
 # ── Colors ───────────────────────────────────────────────────────────────────
 
 GREEN='\033[0;32m'
@@ -71,6 +74,62 @@ run_as_kiosk_user() {
 require_root
 confirm
 
+# ── Disable old MyHomeAtahn autostart ─────────────────────────────────────────
+
+info "Disabling old MyHomeAtahn app if present..."
+
+# System services
+while read -r unit; do
+  [ -z "$unit" ] && continue
+  info "Disabling system service: $unit"
+  systemctl stop "$unit" 2>/dev/null || true
+  systemctl disable "$unit" 2>/dev/null || true
+  systemctl mask "$unit" 2>/dev/null || true
+done < <(
+  systemctl list-unit-files --type=service --no-legend 2>/dev/null \
+    | awk '{print $1}' \
+    | grep -Ei 'myhome|athan|atahn' || true
+)
+
+# User services for kiosk user
+if id "$KIOSK_USER" >/dev/null 2>&1; then
+  while read -r unit; do
+    [ -z "$unit" ] && continue
+    info "Disabling user service for $KIOSK_USER: $unit"
+    sudo -u "$KIOSK_USER" -H systemctl --user stop "$unit" 2>/dev/null || true
+    sudo -u "$KIOSK_USER" -H systemctl --user disable "$unit" 2>/dev/null || true
+    sudo -u "$KIOSK_USER" -H systemctl --user mask "$unit" 2>/dev/null || true
+  done < <(
+    sudo -u "$KIOSK_USER" -H systemctl --user list-unit-files --type=service --no-legend 2>/dev/null \
+      | awk '{print $1}' \
+      | grep -Ei 'myhome|athan|atahn' || true
+  )
+fi
+
+# PM2 cleanup
+if command -v pm2 >/dev/null 2>&1; then
+  info "Checking PM2 for old MyHomeAtahn processes..."
+  pm2 delete MyHomeAtahn 2>/dev/null || true
+  pm2 delete myhomeatahn 2>/dev/null || true
+  pm2 delete myhomeathan 2>/dev/null || true
+  pm2 save 2>/dev/null || true
+fi
+
+# Autostart desktop entries
+rm -f "$HOME/.config/autostart/"*MyHomeAtahn*.desktop 2>/dev/null || true
+rm -f "$HOME/.config/autostart/"*myhome*.desktop 2>/dev/null || true
+rm -f "$HOME/.config/autostart/"*athan*.desktop 2>/dev/null || true
+rm -f "/home/$KIOSK_USER/.config/autostart/"*MyHomeAtahn*.desktop 2>/dev/null || true
+rm -f "/home/$KIOSK_USER/.config/autostart/"*myhome*.desktop 2>/dev/null || true
+rm -f "/home/$KIOSK_USER/.config/autostart/"*athan*.desktop 2>/dev/null || true
+
+# Stop loose running processes
+pkill -f 'MyHomeAtahn' 2>/dev/null || true
+pkill -f 'myhomeatahn' 2>/dev/null || true
+pkill -f 'myhomeathan' 2>/dev/null || true
+
+info "Old MyHomeAtahn autostart cleanup complete."
+
 info "Updating apt..."
 apt-get update
 
@@ -112,6 +171,40 @@ if [ "$MINIMAL_DESKTOP" = "true" ]; then
 
   apt-get autoremove -y
   apt-get autoclean -y
+fi
+
+# ── Remove PostgreSQL if installed ────────────────────────────────────────────
+
+if [ "$REMOVE_POSTGRES" = "true" ]; then
+  info "Removing PostgreSQL services and packages..."
+
+  # Stop/disable known PostgreSQL units if they exist.
+  systemctl stop postgresql 2>/dev/null || true
+  systemctl disable postgresql 2>/dev/null || true
+
+  # Stop/disable versioned clusters like postgresql@17-main.service.
+  while read -r unit; do
+    [ -z "$unit" ] && continue
+    info "Stopping PostgreSQL unit: $unit"
+    systemctl stop "$unit" 2>/dev/null || true
+    systemctl disable "$unit" 2>/dev/null || true
+  done < <(systemctl list-unit-files 'postgresql@*.service' --no-legend 2>/dev/null | awk '{print $1}')
+
+  # Purge packages.
+  apt-get purge -y \
+    'postgresql*' \
+    'postgresql-client*' \
+    'postgresql-common' \
+    || true
+
+  apt-get autoremove -y
+  apt-get autoclean -y
+
+  # Optional: remove leftover PostgreSQL data/config/log dirs.
+  # This deletes local PostgreSQL databases.
+  rm -rf /var/lib/postgresql /etc/postgresql /var/log/postgresql
+
+  info "PostgreSQL removed."
 fi
 
 # ── Create kiosk user ─────────────────────────────────────────────────────────

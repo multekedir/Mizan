@@ -9,9 +9,13 @@
 #   ./deploy.sh --stop     # stop all running Mizan processes
 #
 # Ports (override via env vars):
-#   SERVE_PORT   — static frontend   (default: 3000)
+#   SERVE_PORT   — static frontend   (default: 3000; use 43997 to match setup-mizan-kiosk.sh)
 #   BACKEND_PORT — Python API        (default: 8000)
 #   BACKEND_HOST — bind address      (default: 127.0.0.1)
+#
+# Tip: Start the real `serve` binary (not `npx`) so .frontend.pid tracks the server process.
+# If the wrong port responds or the assistant says "Not Found", the UI may be calling the
+# static server instead of the API — rebuild with VITE_ASSISTANT_URL=http://127.0.0.1:8000
 
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
@@ -67,6 +71,28 @@ stop_process() {
   fi
 
   rm -f "$pidfile"
+}
+
+# Free a TCP listen port if something is still bound (e.g. stale `serve` after a bad `npx` PID).
+free_listen_port() {
+  local port="$1"
+  if command -v lsof >/dev/null 2>&1; then
+    local pids
+    pids="$(lsof -ti tcp:"$port" -sTCP:LISTEN 2>/dev/null || true)"
+    if [ -n "$pids" ]; then
+      warn "Port $port is in use; stopping listener(s)..."
+      # shellcheck disable=SC2086
+      kill -TERM $pids 2>/dev/null || true
+      sleep 0.5
+      pids="$(lsof -ti tcp:"$port" -sTCP:LISTEN 2>/dev/null || true)"
+      if [ -n "$pids" ]; then
+        # shellcheck disable=SC2086
+        kill -KILL $pids 2>/dev/null || true
+      fi
+    fi
+  elif command -v fuser >/dev/null 2>&1; then
+    fuser -k "${port}/tcp" 2>/dev/null || true
+  fi
 }
 
 for arg in "$@"; do
@@ -128,8 +154,17 @@ if $DO_FRONTEND; then
   npm install --silent --no-audit --no-save serve
   VITE_ASSISTANT_URL="${VITE_ASSISTANT_URL:-http://$BACKEND_HOST:$BACKEND_PORT}" npm run build
 
+  SERVE_BIN="$ROOT/node_modules/.bin/serve"
+  if [ ! -e "$SERVE_BIN" ]; then
+    error "serve not found at $SERVE_BIN (npm install serve failed?)"
+    exit 1
+  fi
+
+  free_listen_port "$SERVE_PORT"
+
   info "Starting frontend static server on port $SERVE_PORT..."
-  nohup npx --yes serve -s dist -l "tcp://$BACKEND_HOST:$SERVE_PORT" \
+  # Use the real serve binary so $! is the long-lived process (npx exits early and breaks PID + ports).
+  nohup "$SERVE_BIN" -s dist -l "tcp://$BACKEND_HOST:$SERVE_PORT" \
     > "$FRONTEND_LOG" 2>&1 &
   echo $! > "$FRONTEND_PID"
   info "Frontend PID $(cat "$FRONTEND_PID") → http://$BACKEND_HOST:$SERVE_PORT"
@@ -158,6 +193,8 @@ if $DO_BACKEND; then
 
   # Ensure data directory exists (first run)
   mkdir -p data
+
+  free_listen_port "$BACKEND_PORT"
 
   info "Starting backend on $BACKEND_HOST:$BACKEND_PORT..."
   BACKEND_HOST="$BACKEND_HOST" BACKEND_PORT="$BACKEND_PORT" \
@@ -219,6 +256,12 @@ if $DO_BACKEND; then
   echo -e "  Backend   →  http://$BACKEND_HOST:$BACKEND_PORT"
   echo -e "  Health    →  http://$BACKEND_HOST:$BACKEND_PORT/health"
   echo -e "  Logs      →  $BACKEND_LOG"
+fi
+if $DO_FRONTEND && $DO_BACKEND; then
+  echo ""
+  echo -e "  Assistant API URL baked into the build:"
+  echo -e "    ${VITE_ASSISTANT_URL:-http://$BACKEND_HOST:$BACKEND_PORT}"
+  echo -e "  (If chat fails with Not Found, rebuild after setting VITE_ASSISTANT_URL to the backend URL above.)"
 fi
 echo ""
 echo -e "  Stop with:  ./deploy.sh --stop"
