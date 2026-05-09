@@ -32,6 +32,14 @@ export default function App() {
 
   const dismissMothersDayIntro = useCallback(() => {
     setShowMothersDayIntro(false);
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href);
+      if (url.searchParams.has('mothersday')) {
+        url.searchParams.delete('mothersday');
+        const next = `${url.pathname}${url.search}${url.hash}`;
+        window.history.replaceState({}, '', next || url.pathname);
+      }
+    }
   }, []);
 
   const hydrateTasks = useTaskStore((s) => s.hydrate);

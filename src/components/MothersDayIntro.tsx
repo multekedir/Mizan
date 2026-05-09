@@ -11,13 +11,26 @@ function envMothersDayIntroEnabled(): boolean {
   return v === 'true' || v === '1' || v === 'yes';
 }
 
+function truthyQueryParam(raw: string | null): boolean {
+  if (raw == null) return false;
+  const s = raw.trim().toLowerCase();
+  return s === '1' || s === 'true' || s === 'yes';
+}
+
+/** `?mothersday=1` (or true/yes) on the app URL, e.g. kiosk open URL. */
+function queryMothersDayIntroEnabled(): boolean {
+  if (typeof window === 'undefined') return false;
+  const params = new URLSearchParams(window.location.search);
+  return truthyQueryParam(params.get('mothersday'));
+}
+
 /**
- * Splash on initial load when enabled.
- * Same URL as the app; no query params or extra routes required.
+ * Splash on initial load when enabled via build env and/or URL query.
+ * Use `VITE_MOTHERS_DAY_INTRO=true` or open the app with `?mothersday=1`.
  */
 export function shouldShowMothersDayIntro(): boolean {
   if (typeof window === 'undefined') return false;
-  return envMothersDayIntroEnabled();
+  return envMothersDayIntroEnabled() || queryMothersDayIntroEnabled();
 }
 
 type Props = {
