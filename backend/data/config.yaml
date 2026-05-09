@@ -15,8 +15,8 @@ server:
 
 ollama:
   base_url: "http://localhost:11434"
-  chat_model: "aya:latest"          # used for task requests
-  chat_model_fast: "llama3.2:latest" # used for chat-only (greetings, intros, etc.)
+  chat_model: "llama3.2:latest"     # used for task requests (RAG / structured replies)
+  chat_model_fast: "llama3.2:latest" # chat-only path (greetings, intros); same model = one pull on kiosk
   embed_model: "nomic-embed-text"
   timeout_seconds: 90
   max_context_turns: 12   # conversation turns kept in Ollama window
