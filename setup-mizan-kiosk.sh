@@ -32,6 +32,13 @@ DISABLE_EXTRA_SERVICES="${DISABLE_EXTRA_SERVICES:-true}"
 # If true, purges PostgreSQL packages and data dirs (if installed).
 REMOVE_POSTGRES="${REMOVE_POSTGRES:-false}"
 
+# If true, remove Ollama models not listed in backend config (chat / fast / embed)
+# plus any names in OLLAMA_KEEP_MODELS. Set false to leave all downloaded models.
+PRUNE_OLLAMA_MODELS="${PRUNE_OLLAMA_MODELS:-true}"
+
+# Extra Ollama model names/tags to never prune (space-separated), e.g. "phi3:latest".
+OLLAMA_KEEP_MODELS="${OLLAMA_KEEP_MODELS:-}"
+
 # ── Colors ───────────────────────────────────────────────────────────────────
 
 GREEN='\033[0;32m'
@@ -129,6 +136,41 @@ pkill -f 'myhomeatahn' 2>/dev/null || true
 pkill -f 'myhomeathan' 2>/dev/null || true
 
 info "Old MyHomeAtahn autostart cleanup complete."
+
+# ── Disable old Athan Clock / MyHomeAtahn service ─────────────────────────────
+
+info "Disabling old Athan Clock / MyHomeAtahn service if present..."
+
+OLD_ATHAN_USER="${OLD_ATHAN_USER:-anuye}"
+OLD_ATHAN_SERVICE="athan-clock@${OLD_ATHAN_USER}.service"
+
+systemctl stop "$OLD_ATHAN_SERVICE" 2>/dev/null || true
+systemctl disable "$OLD_ATHAN_SERVICE" 2>/dev/null || true
+systemctl mask "$OLD_ATHAN_SERVICE" 2>/dev/null || true
+
+while read -r unit; do
+  [ -z "$unit" ] && continue
+  info "Stopping and disabling old service: $unit"
+  systemctl stop "$unit" 2>/dev/null || true
+  systemctl disable "$unit" 2>/dev/null || true
+  systemctl mask "$unit" 2>/dev/null || true
+done < <(
+  systemctl list-unit-files --type=service --no-legend 2>/dev/null \
+    | awk '{print $1}' \
+    | grep -Ei 'athan-clock|myhome|atahn' || true
+)
+
+rm -f /etc/systemd/system/athan-clock@.service
+rm -f /etc/systemd/system/athan-clock.service
+
+systemctl daemon-reload
+systemctl reset-failed
+
+pkill -f "/home/${OLD_ATHAN_USER}/athan-clock/main.js" 2>/dev/null || true
+pkill -f 'electron .*athan-clock' 2>/dev/null || true
+pkill -f 'MyHomeAtahn' 2>/dev/null || true
+
+info "Old Athan Clock cleanup complete."
 
 info "Updating apt..."
 apt-get update
@@ -280,6 +322,70 @@ pull_model_if_missing() {
   ollama pull "$model" || warn "Failed to pull $model (continuing)"
 }
 
+# Stop and delete any local Ollama models except those in config (+ OLLAMA_KEEP_MODELS).
+prune_excess_ollama_models() {
+  local -a keep=()
+  local m inst k i_base i_tag k_base k_tag
+
+  for m in "$@"; do
+    m="$(echo "$m" | xargs)"
+    [ -z "$m" ] && continue
+    keep+=("$m")
+  done
+
+  if [ -n "${OLLAMA_KEEP_MODELS:-}" ]; then
+    read -r -a _extra_models <<< "${OLLAMA_KEEP_MODELS}"
+    keep+=("${_extra_models[@]}")
+  fi
+
+  if [ "${#keep[@]}" -eq 0 ]; then
+    warn "Ollama prune skipped: no models listed to keep."
+    return 0
+  fi
+
+  info "Pruning Ollama models (keeping: ${keep[*]})..."
+
+  model_is_kept() {
+    local inst="$1"
+    local i_base i_tag k k_base k_tag
+
+    if [[ "$inst" == *:* ]]; then
+      i_base="${inst%%:*}"
+      i_tag="${inst#*:}"
+    else
+      i_base="$inst"
+      i_tag="latest"
+    fi
+
+    for k in "${keep[@]}"; do
+      [ -z "$k" ] && continue
+      if [[ "$k" == *:* ]]; then
+        k_base="${k%%:*}"
+        k_tag="${k#*:}"
+      else
+        k_base="$k"
+        k_tag=""
+      fi
+
+      [ "$inst" = "$k" ] && return 0
+      if [ "$i_base" = "$k_base" ]; then
+        [ -z "$k_tag" ] || [ "$i_tag" = "$k_tag" ] && return 0
+      fi
+    done
+    return 1
+  }
+
+  while read -r inst; do
+    [ -z "$inst" ] && continue
+    if model_is_kept "$inst"; then
+      continue
+    fi
+    info "Removing unneeded Ollama model: $inst"
+    ollama stop "$inst" 2>/dev/null || true
+    ollama rm "$inst" 2>/dev/null || warn "Failed to remove $inst"
+  done < <(ollama list 2>/dev/null | awk 'NR > 1 {print $1}')
+}
+
 # Pull models from backend config so the assistant works immediately.
 CONFIG_FILE="$PROJECT_DIR/backend/data/config.yaml"
 
@@ -293,6 +399,12 @@ if [ -f "$CONFIG_FILE" ]; then
   pull_model_if_missing "$CHAT_MODEL"
   pull_model_if_missing "$CHAT_MODEL_FAST"
   pull_model_if_missing "$EMBED_MODEL"
+
+  if [ "${PRUNE_OLLAMA_MODELS}" = "true" ]; then
+    prune_excess_ollama_models "$CHAT_MODEL" "$CHAT_MODEL_FAST" "$EMBED_MODEL"
+  else
+    info "PRUNE_OLLAMA_MODELS=false; leaving all Ollama models installed."
+  fi
 else
   warn "Backend config not found at $CONFIG_FILE; skipping model pulls."
 fi
