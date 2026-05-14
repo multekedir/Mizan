@@ -7,7 +7,8 @@ import {
   type NormalizedEvent,
   badgeToneForEvent,
 } from '../../services/googleCalendarService';
-import { useAuthStore } from '../../stores/authStore';
+import { useAuthStore, isGoogleTokenValid } from '../../stores/authStore';
+import { useCalendarStore } from '../../stores/calendarStore';
 
 const badgeClass: Record<string, string> = {
   terracotta: 'bg-mizan-accent/25 text-mizan-warning border-mizan-accent/40',
@@ -58,18 +59,21 @@ export function CalendarColumn() {
 function CalendarColumnApiKey() {
   const [events, setEvents] = useState<NormalizedEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const setSharedEvents = useCalendarStore((s) => s.setEvents);
 
   const load = useCallback(async () => {
     try {
       const min = new Date();
       const max = new Date();
       max.setDate(max.getDate() + 7);
-      setEvents(await listEventsWithApiKey(min, max));
+      const fetched = await listEventsWithApiKey(min, max);
+      setEvents(fetched);
+      setSharedEvents(fetched);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not load calendar.');
     }
-  }, []);
+  }, [setSharedEvents]);
 
   /* eslint-disable react-hooks/set-state-in-effect -- initial / interval calendar fetch */
   useEffect(() => { void load(); }, [load]);
@@ -92,10 +96,11 @@ function CalendarColumnAuthed() {
   const [events, setEvents] = useState<NormalizedEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [needManualLogin, setNeedManualLogin] = useState(false);
+  const setSharedEvents = useCalendarStore((s) => s.setEvents);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const login = useGoogleLogin({
-    scope: 'https://www.googleapis.com/auth/calendar.readonly',
+    scope: 'https://www.googleapis.com/auth/calendar.events',
     onSuccess: async (res) => {
       await setGoogleTokens({
         accessToken: res.access_token,
@@ -121,7 +126,9 @@ function CalendarColumnAuthed() {
       const min = new Date();
       const max = new Date();
       max.setDate(max.getDate() + 7);
-      setEvents(await svc.listEventsRange(min, max));
+      const fetched = await svc.listEventsRange(min, max);
+      setEvents(fetched);
+      setSharedEvents(fetched);
       setError(null);
     } catch (e) {
       if (e instanceof Error && e.message === 'UNAUTHORIZED') {
@@ -136,13 +143,8 @@ function CalendarColumnAuthed() {
   /* eslint-disable react-hooks/set-state-in-effect -- load events after OAuth hydrate */
   useEffect(() => {
     if (!hydrated) return;
-    if (!googleTokens?.accessToken) {
-      // No token at all — try silent login immediately.
-      login();
-      return;
-    }
-    if (googleTokens.expiresAt < Date.now() + 60_000) {
-      // Already expired — refresh now.
+    if (!isGoogleTokenValid(googleTokens)) {
+      // No token, or expired — try silent login immediately.
       login();
       return;
     }

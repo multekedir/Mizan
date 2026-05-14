@@ -1,21 +1,10 @@
 #!/usr/bin/env bash
-# Mizan — full deploy script (frontend + backend)
-#
-# Usage:
-#   chmod +x deploy.sh
-#   ./deploy.sh            # build frontend + install backend + start both
-#   ./deploy.sh --backend  # backend only (skip frontend build)
-#   ./deploy.sh --frontend # frontend build only (skip backend)
-#   ./deploy.sh --stop     # stop all running Mizan processes
+# Mizan — deploy script (frontend + backend)
 #
 # Ports (override via env vars):
-#   SERVE_PORT   — static frontend   (default: 3000; use 43997 to match setup-mizan-kiosk.sh)
+#   SERVE_PORT   — static frontend   (default: 3000)
 #   BACKEND_PORT — Python API        (default: 8000)
 #   BACKEND_HOST — bind address      (default: 127.0.0.1)
-#
-# Tip: Start the real `serve` binary (not `npx`) so .frontend.pid tracks the server process.
-# If the wrong port responds or the assistant says "Not Found", the UI may be calling the
-# static server instead of the API — rebuild with VITE_ASSISTANT_URL=http://127.0.0.1:8000
 
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
@@ -29,71 +18,72 @@ BACKEND_LOG="$ROOT/.backend.log"
 FRONTEND_PID="$ROOT/.frontend.pid"
 BACKEND_PID="$ROOT/.backend.pid"
 
-# ── colour helpers ────────────────────────────────────────────────────────────
-
 GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; BLUE='\033[0;34m'; NC='\033[0m'
 info()  { echo -e "${GREEN}[deploy]${NC} $*"; }
 warn()  { echo -e "${YELLOW}[deploy]${NC} $*"; }
 error() { echo -e "${RED}[deploy]${NC} $*" >&2; }
 
-# ── arg parsing ───────────────────────────────────────────────────────────────
-
-DO_FRONTEND=true
-DO_BACKEND=true
+# ── helpers ───────────────────────────────────────────────────────────────────
 
 stop_process() {
   local pidfile="$1" name="$2"
-
-  if [ ! -f "$pidfile" ]; then
-    return 0
-  fi
-
-  local pid
-  pid="$(cat "$pidfile")"
-
+  [ -f "$pidfile" ] || return 0
+  local pid; pid="$(cat "$pidfile")"
   if kill -0 "$pid" 2>/dev/null; then
     info "Stopping $name (PID $pid)..."
     kill "$pid" 2>/dev/null || true
-
     for _ in $(seq 1 10); do
-      if ! kill -0 "$pid" 2>/dev/null; then
-        break
-      fi
+      kill -0 "$pid" 2>/dev/null || break
       sleep 0.2
     done
-
-    if kill -0 "$pid" 2>/dev/null; then
-      warn "$name did not stop gracefully; killing..."
-      kill -9 "$pid" 2>/dev/null || true
-    fi
+    kill -0 "$pid" 2>/dev/null && kill -9 "$pid" 2>/dev/null || true
   else
     warn "$name was not running."
   fi
-
   rm -f "$pidfile"
 }
 
-# Free a TCP listen port if something is still bound (e.g. stale `serve` after a bad `npx` PID).
 free_listen_port() {
   local port="$1"
   if command -v lsof >/dev/null 2>&1; then
-    local pids
-    pids="$(lsof -ti tcp:"$port" -sTCP:LISTEN 2>/dev/null || true)"
+    local pids; pids="$(lsof -ti tcp:"$port" -sTCP:LISTEN 2>/dev/null || true)"
     if [ -n "$pids" ]; then
       warn "Port $port is in use; stopping listener(s)..."
       # shellcheck disable=SC2086
       kill -TERM $pids 2>/dev/null || true
       sleep 0.5
       pids="$(lsof -ti tcp:"$port" -sTCP:LISTEN 2>/dev/null || true)"
-      if [ -n "$pids" ]; then
-        # shellcheck disable=SC2086
-        kill -KILL $pids 2>/dev/null || true
-      fi
+      # shellcheck disable=SC2086
+      [ -n "$pids" ] && kill -KILL $pids 2>/dev/null || true
     fi
   elif command -v fuser >/dev/null 2>&1; then
     fuser -k "${port}/tcp" 2>/dev/null || true
   fi
 }
+
+wait_for_url() {
+  local url="$1" label="$2" logfile="$3" fatal="${4:-false}"
+  info "Waiting for $label..."
+  for i in $(seq 1 20); do
+    if curl -sf "$url" >/dev/null 2>&1; then
+      info "$label is healthy."
+      return 0
+    fi
+    [ "$i" -eq 20 ] && break
+    sleep 1
+  done
+  if [ "$fatal" = "true" ]; then
+    error "$label did not respond after 20s. See $logfile"
+    exit 1
+  else
+    warn "$label did not respond after 20s. Check $logfile"
+  fi
+}
+
+# ── arg parsing ───────────────────────────────────────────────────────────────
+
+DO_FRONTEND=true
+DO_BACKEND=true
 
 for arg in "$@"; do
   case "$arg" in
@@ -116,29 +106,19 @@ done
 # ── pre-flight checks ─────────────────────────────────────────────────────────
 
 if $DO_FRONTEND; then
-  if ! command -v node >/dev/null 2>&1; then
-    error "Node.js not found. Install via: https://github.com/nvm-sh/nvm"
-    exit 1
-  fi
+  command -v node >/dev/null 2>&1 || { error "Node.js not found."; exit 1; }
   info "Node $(node --version) / npm $(npm --version)"
 fi
 
 if $DO_BACKEND; then
-  if ! command -v python3 >/dev/null 2>&1; then
-    error "python3 not found."
-    exit 1
-  fi
+  command -v python3 >/dev/null 2>&1 || { error "python3 not found."; exit 1; }
   info "Python $(python3 --version)"
-
-  if ! command -v ollama >/dev/null 2>&1; then
-    warn "ollama not found in PATH — backend will run but AI responses will fail."
-    warn "Install Ollama: https://ollama.com"
-  else
-    info "Ollama: $(ollama --version 2>/dev/null || echo 'found')"
-  fi
+  command -v ollama >/dev/null 2>&1 \
+    && info "Ollama: $(ollama --version 2>/dev/null || echo 'found')" \
+    || warn "ollama not found in PATH — AI responses will fail."
 fi
 
-# ── stop any existing instances ───────────────────────────────────────────────
+# ── stop existing instances ───────────────────────────────────────────────────
 
 stop_process "$FRONTEND_PID" "frontend"
 stop_process "$BACKEND_PID"  "backend"
@@ -146,8 +126,8 @@ stop_process "$BACKEND_PID"  "backend"
 # ── frontend ──────────────────────────────────────────────────────────────────
 
 if $DO_FRONTEND; then
-  info "Installing frontend dependencies..."
   cd "$ROOT"
+  info "Installing frontend dependencies..."
   npm ci --silent
 
   info "Building frontend..."
@@ -155,25 +135,17 @@ if $DO_FRONTEND; then
   VITE_ASSISTANT_URL="${VITE_ASSISTANT_URL:-http://$BACKEND_HOST:$BACKEND_PORT}" npm run build
 
   SERVE_BIN="$ROOT/node_modules/.bin/serve"
-  if [ ! -e "$SERVE_BIN" ]; then
-    error "serve not found at $SERVE_BIN (npm install serve failed?)"
-    exit 1
-  fi
+  [ -e "$SERVE_BIN" ] || { error "serve not found at $SERVE_BIN"; exit 1; }
 
   free_listen_port "$SERVE_PORT"
 
-  info "Starting frontend static server on port $SERVE_PORT..."
-  # Use the real serve binary so $! is the long-lived process (npx exits early and breaks PID + ports).
-  nohup "$SERVE_BIN" -s dist -l "tcp://$BACKEND_HOST:$SERVE_PORT" \
-    > "$FRONTEND_LOG" 2>&1 &
+  info "Starting frontend on port $SERVE_PORT..."
+  nohup "$SERVE_BIN" -s dist -l "tcp://$BACKEND_HOST:$SERVE_PORT" > "$FRONTEND_LOG" 2>&1 &
   echo $! > "$FRONTEND_PID"
   info "Frontend PID $(cat "$FRONTEND_PID") → http://$BACKEND_HOST:$SERVE_PORT"
 
   sleep 1
-  if ! kill -0 "$(cat "$FRONTEND_PID")" 2>/dev/null; then
-    error "Frontend failed to start. See $FRONTEND_LOG"
-    exit 1
-  fi
+  kill -0 "$(cat "$FRONTEND_PID")" 2>/dev/null || { error "Frontend failed to start. See $FRONTEND_LOG"; exit 1; }
 fi
 
 # ── backend ───────────────────────────────────────────────────────────────────
@@ -181,17 +153,18 @@ fi
 if $DO_BACKEND; then
   cd "$ROOT/backend"
 
-  info "Setting up Python virtual environment..."
-  if [ ! -d ".venv" ]; then
-    python3 -m venv .venv
+  # Recreate venv if the interpreter is missing.
+  if [ -d ".venv" ] && ! .venv/bin/python3 -c "" 2>/dev/null; then
+    warn "Stale backend venv — recreating..."
+    rm -rf .venv
   fi
 
+  info "Setting up Python virtual environment..."
+  [ -d ".venv" ] || python3 -m venv .venv
+
   source .venv/bin/activate
-  # Use python3 -m pip — bare `pip` is not always on PATH after `venv` on some setups.
   python3 -m pip install -q --upgrade pip
   python3 -m pip install -q -r requirements.txt
-
-  # Ensure data directory exists (first run)
   mkdir -p data
 
   free_listen_port "$BACKEND_PORT"
@@ -204,43 +177,13 @@ if $DO_BACKEND; then
   info "Backend PID $(cat "$BACKEND_PID") → http://$BACKEND_HOST:$BACKEND_PORT"
 
   sleep 1
-  if ! kill -0 "$(cat "$BACKEND_PID")" 2>/dev/null; then
-    error "Backend failed to start. See $BACKEND_LOG"
-    exit 1
-  fi
+  kill -0 "$(cat "$BACKEND_PID")" 2>/dev/null || { error "Backend failed to start. See $BACKEND_LOG"; exit 1; }
 fi
 
-# ── health check ──────────────────────────────────────────────────────────────
+# ── health checks ─────────────────────────────────────────────────────────────
 
-if $DO_FRONTEND; then
-  info "Waiting for frontend to be ready..."
-  for i in $(seq 1 20); do
-    if curl -sf "http://$BACKEND_HOST:$SERVE_PORT" >/dev/null 2>&1; then
-      info "Frontend is healthy."
-      break
-    fi
-    if [ "$i" -eq 20 ]; then
-      warn "Frontend did not respond after 20s. Check $FRONTEND_LOG"
-      break
-    fi
-    sleep 1
-  done
-fi
-
-if $DO_BACKEND; then
-  info "Waiting for backend to be ready..."
-  for i in $(seq 1 20); do
-    if curl -sf "http://$BACKEND_HOST:$BACKEND_PORT/health" >/dev/null 2>&1; then
-      info "Backend is healthy."
-      break
-    fi
-    if [ "$i" -eq 20 ]; then
-      error "Backend did not respond after 20s. Check $BACKEND_LOG"
-      exit 1
-    fi
-    sleep 1
-  done
-fi
+$DO_FRONTEND && wait_for_url "http://$BACKEND_HOST:$SERVE_PORT"          "frontend" "$FRONTEND_LOG"
+$DO_BACKEND  && wait_for_url "http://$BACKEND_HOST:$BACKEND_PORT/health" "backend"  "$BACKEND_LOG" true
 
 # ── summary ───────────────────────────────────────────────────────────────────
 
@@ -248,34 +191,7 @@ echo ""
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e "${GREEN} Mizan is running${NC}"
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-if $DO_FRONTEND; then
-  echo -e "  Frontend  →  http://$BACKEND_HOST:$SERVE_PORT"
-  echo -e "  Logs      →  $FRONTEND_LOG"
-fi
-if $DO_BACKEND; then
-  echo -e "  Backend   →  http://$BACKEND_HOST:$BACKEND_PORT"
-  echo -e "  Health    →  http://$BACKEND_HOST:$BACKEND_PORT/health"
-  echo -e "  Logs      →  $BACKEND_LOG"
-fi
-if $DO_FRONTEND && $DO_BACKEND; then
-  echo ""
-  echo -e "  Assistant API URL baked into the build:"
-  echo -e "    ${VITE_ASSISTANT_URL:-http://$BACKEND_HOST:$BACKEND_PORT}"
-  echo -e "  (If chat fails with Not Found, rebuild after setting VITE_ASSISTANT_URL to the backend URL above.)"
-fi
-echo ""
-echo -e "  Stop with:  ./deploy.sh --stop"
-if $DO_FRONTEND; then
-  echo ""
-  echo -e "  Kiosk mode (Chromium):"
-  echo -e "    ${BLUE}chromium-browser \\${NC}"
-  echo -e "      ${BLUE}--kiosk \\${NC}"
-  echo -e "      ${BLUE}--noerrdialogs \\${NC}"
-  echo -e "      ${BLUE}--disable-infobars \\${NC}"
-  echo -e "      ${BLUE}--disable-session-crashed-bubble \\${NC}"
-  echo -e "      ${BLUE}--disable-features=TranslateUI \\${NC}"
-  echo -e "      ${BLUE}--overscroll-history-navigation=0 \\${NC}"
-  echo -e "      ${BLUE}--start-maximized \\${NC}"
-  echo -e "      ${BLUE}http://$BACKEND_HOST:$SERVE_PORT${NC}"
-fi
+$DO_FRONTEND && echo -e "  Frontend  →  http://$BACKEND_HOST:$SERVE_PORT  (log: $FRONTEND_LOG)"
+$DO_BACKEND  && echo -e "  Backend   →  http://$BACKEND_HOST:$BACKEND_PORT  (log: $BACKEND_LOG)"
+echo -e "  Stop      →  make stop  (or ./deploy.sh --stop)"
 echo ""

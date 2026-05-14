@@ -5,6 +5,7 @@ import { useTaskStore } from '../../stores/taskStore';
 import { usePeopleStore } from '../../stores/peopleStore';
 import { useGoalStore } from '../../stores/goalStore';
 import { GoalFormModal } from '../goals/GoalFormModal';
+import { getZonedDayOfWeek } from '../../lib/logicalDay';
 import type { TaskRow } from '../../db/database';
 
 // ── Prayer block time options ─────────────────────────────────────────────────
@@ -52,50 +53,62 @@ function parseSchedule(schedule?: string): {
 // ── Modal ─────────────────────────────────────────────────────────────────────
 
 interface Props {
-  task: TaskRow;
+  task?: TaskRow | null;
   open: boolean;
   onClose: () => void;
 }
 
 export function TaskEditModal({ task, open, onClose }: Props) {
   const editTask = useTaskStore((s) => s.editTask);
+  const addTask = useTaskStore((s) => s.addTask);
   const people = usePeopleStore((s) => s.people);
   const goals = useGoalStore((s) => s.goals);
 
-  const [title, setTitle] = useState(task.title);
-  const [assignees, setAssignees] = useState<string[]>(() =>
-    task.assignee ? task.assignee.split(', ').filter(Boolean) : []
-  );
-  const [timeBlock, setTimeBlock] = useState<string | undefined>(() => detectBlock(task.time));
-  const [duration, setDuration] = useState(task.duration ?? '');
-  const [goalId, setGoalId] = useState<string | undefined>(task.goalId);
+  const isCreate = !task;
+
+  const [title, setTitle] = useState('');
+  const [assignees, setAssignees] = useState<string[]>([]);
+  const [timeBlock, setTimeBlock] = useState<string | undefined>(undefined);
+  const [duration, setDuration] = useState('');
+  const [goalId, setGoalId] = useState<string | undefined>(undefined);
   const [goalModalOpen, setGoalModalOpen] = useState(false);
 
-  // Recurring state
-  const [isRecurring, setIsRecurring] = useState(task.recurring);
-  const [freq, setFreq] = useState<'daily' | 'weekly' | 'monthly'>(() => parseSchedule(task.schedule).freq);
-  const [weekDay, setWeekDay] = useState(() => parseSchedule(task.schedule).weekDay);
-  const [monthDay, setMonthDay] = useState(() => parseSchedule(task.schedule).monthDay);
+  const [isRecurring, setIsRecurring] = useState(false);
+  const [freq, setFreq] = useState<'daily' | 'weekly' | 'monthly'>('daily');
+  const [weekDay, setWeekDay] = useState(getZonedDayOfWeek());
+  const [monthDay, setMonthDay] = useState(new Date().getDate());
 
   const inputRef = useRef<HTMLInputElement>(null);
 
   /* eslint-disable react-hooks/set-state-in-effect -- sync form with task prop when modal opens */
   useEffect(() => {
     if (open) {
-      setTitle(task.title);
-      setAssignees(task.assignee ? task.assignee.split(', ').filter(Boolean) : []);
-      setTimeBlock(detectBlock(task.time));
-      setDuration(task.duration ?? '');
-      setGoalId(task.goalId);
+      if (task) {
+        setTitle(task.title);
+        setAssignees(task.assignee ? task.assignee.split(', ').filter(Boolean) : []);
+        setTimeBlock(detectBlock(task.time));
+        setDuration(task.duration ?? '');
+        setGoalId(task.goalId);
+        setIsRecurring(task.recurring);
+        const parsed = parseSchedule(task.schedule);
+        setFreq(parsed.freq);
+        setWeekDay(parsed.weekDay);
+        setMonthDay(parsed.monthDay);
+      } else {
+        setTitle('');
+        setAssignees(people[0] ? [people[0].name] : []);
+        setTimeBlock(undefined);
+        setDuration('');
+        setGoalId(undefined);
+        setIsRecurring(false);
+        setFreq('daily');
+        setWeekDay(getZonedDayOfWeek());
+        setMonthDay(new Date().getDate());
+      }
       setGoalModalOpen(false);
-      setIsRecurring(task.recurring);
-      const parsed = parseSchedule(task.schedule);
-      setFreq(parsed.freq);
-      setWeekDay(parsed.weekDay);
-      setMonthDay(parsed.monthDay);
       setTimeout(() => inputRef.current?.focus(), 80);
     }
-  }, [open, task]);
+  }, [open, task, people]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   function toggleAssignee(name: string) {
@@ -113,26 +126,29 @@ export function TaskEditModal({ task, open, onClose }: Props) {
 
     const time = timeBlock ? TIME_BLOCKS.find((b) => b.key === timeBlock)?.value : undefined;
     const assigneeValue = assignees.length > 0 ? assignees.join(', ') : 'Family';
-
-    const finalGoalId: string | null | undefined =
-      task.goalId === goalId ? undefined
-      : goalId === undefined ? null
-      : goalId;
-
-    const newSchedule: string | null = isRecurring
+    const schedule = isRecurring
       ? freq === 'daily' ? 'daily'
         : freq === 'weekly' ? `weekly:${weekDay}`
         : `monthly:${monthDay}`
-      : null;
+      : undefined;
 
-    // Only send recurring/schedule if they changed
-    const recurringChanged = isRecurring !== task.recurring;
-    const scheduleChanged = newSchedule !== (task.schedule ?? null);
-    const finalRecurring = recurringChanged ? isRecurring : undefined;
-    const finalSchedule = (recurringChanged || scheduleChanged) ? newSchedule : undefined;
+    if (isCreate) {
+      await addTask(title.trim(), assigneeValue, isRecurring, schedule, time, duration.trim() || undefined, undefined, goalId);
+    } else {
+      const finalGoalId: string | null | undefined =
+        task!.goalId === goalId ? undefined
+        : goalId === undefined ? null
+        : goalId;
 
-    const realId = task.id.startsWith('proj-') ? task.id.slice(5) : task.id;
-    await editTask(realId, title.trim(), assigneeValue, time, duration.trim() || undefined, finalGoalId, finalRecurring, finalSchedule);
+      const newSchedule = schedule ?? null;
+      const recurringChanged = isRecurring !== task!.recurring;
+      const scheduleChanged = newSchedule !== (task!.schedule ?? null);
+      const finalRecurring = recurringChanged ? isRecurring : undefined;
+      const finalSchedule = (recurringChanged || scheduleChanged) ? newSchedule : undefined;
+
+      const realId = task!.id.startsWith('proj-') ? task!.id.slice(5) : task!.id;
+      await editTask(realId, title.trim(), assigneeValue, time, duration.trim() || undefined, finalGoalId, finalRecurring, finalSchedule);
+    }
     onClose();
   }
 
@@ -175,7 +191,7 @@ export function TaskEditModal({ task, open, onClose }: Props) {
 
                   {/* Header */}
                   <div className="flex items-center justify-between px-5 pt-5 pb-3">
-                    <h2 className="text-mizan-text text-base font-bold">Edit Task</h2>
+                    <h2 className="text-mizan-text text-base font-bold">{isCreate ? 'Add Task' : 'Edit Task'}</h2>
                     <button
                       type="button"
                       onClick={onClose}
@@ -430,7 +446,7 @@ export function TaskEditModal({ task, open, onClose }: Props) {
                         disabled={!title.trim()}
                         className="bg-mizan-success text-mizan-textOnDark flex-1 rounded-2xl py-3 text-sm font-semibold transition-opacity disabled:opacity-40 active:scale-95"
                       >
-                        Save
+                        {isCreate ? 'Add' : 'Save'}
                       </button>
                       <button
                         type="button"

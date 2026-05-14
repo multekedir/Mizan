@@ -19,8 +19,10 @@ import { ResetSection } from './sections/ResetSection';
 
 export { AdminTrigger } from './AdminTrigger';
 
+type SectionId = 'people' | 'prayers' | 'tasks' | 'goals' | 'calendar' | 'reset';
+
 type MenuItem = {
-  id: string;
+  id: SectionId;
   title: string;
   icon: LucideIcon;
   description: string;
@@ -65,7 +67,7 @@ const MENU_ITEMS: MenuItem[] = [
   },
 ];
 
-const SECTION_MAP: Record<string, ComponentType> = {
+const SECTION_MAP: Record<SectionId, ComponentType> = {
   people: PeopleSection,
   prayers: PrayerSection,
   tasks: ImportTasksSection,
@@ -79,10 +81,10 @@ interface Props {
 }
 
 export function AdminPage({ onClose }: Props) {
-  const [activeSection, setActiveSection] = useState<string | null>(null);
+  const [activeSection, setActiveSection] = useState<SectionId>('prayers');
 
-  const currentItem = MENU_ITEMS.find((item) => item.id === activeSection);
-  const Section = activeSection ? SECTION_MAP[activeSection] : null;
+  const currentItem = MENU_ITEMS.find((item) => item.id === activeSection)!;
+  const Section = SECTION_MAP[activeSection];
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-mizan-bg">
@@ -145,21 +147,13 @@ export function AdminPage({ onClose }: Props) {
         </nav>
 
         <div className="custom-scrollbar min-w-0 flex-1 overflow-y-auto p-8">
-          {currentItem && Section ? (
-            <div className="mx-auto max-w-2xl">
-              <h2 className="mb-6 flex items-center gap-3 text-3xl font-bold text-mizan-text">
-                <currentItem.icon className="h-9 w-9 shrink-0" aria-hidden strokeWidth={2} />
-                {currentItem.title}
-              </h2>
-              <Section />
-            </div>
-          ) : (
-            <div className="flex h-full min-h-[50vh] flex-col items-center justify-center text-center">
-              <Settings className="mb-6 h-16 w-16 opacity-40" aria-hidden strokeWidth={1.25} />
-              <h3 className="text-2xl font-medium text-mizan-text/70">Welcome to Settings</h3>
-              <p className="mt-3 max-w-xs text-mizan-text/60">Choose a section from the menu to customize your dashboard</p>
-            </div>
-          )}
+          <div className="mx-auto max-w-2xl">
+            <h2 className="mb-6 flex items-center gap-3 text-3xl font-bold text-mizan-text">
+              <currentItem.icon className="h-9 w-9 shrink-0" aria-hidden strokeWidth={2} />
+              {currentItem.title}
+            </h2>
+            <Section />
+          </div>
         </div>
       </div>
     </div>

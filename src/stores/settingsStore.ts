@@ -1,35 +1,32 @@
 import { create } from 'zustand';
 import { db } from '../db/database';
+import {
+  ALL_PRAYER_KEYS,
+  ATHAN_STYLES,
+  CALC_METHOD_IDS,
+  type AthanStyle,
+  type PrayerCalculationMethodId,
+  type PrayerKey,
+  type PrayerMadhab,
+} from '../lib/prayerCatalog';
 import { applyPrayerCalculationFromConfig } from '../services/prayerService';
 
-export type PrayerKey = 'fajr' | 'dhuhr' | 'asr' | 'maghrib' | 'isha';
-
-export const ALL_PRAYER_KEYS: PrayerKey[] = ['fajr', 'dhuhr', 'asr', 'maghrib', 'isha'];
-
-export const PRAYER_LABELS: Record<PrayerKey, string> = {
-  fajr: 'Fajr',
-  dhuhr: 'Dhuhr',
-  asr: 'Asr',
-  maghrib: 'Maghrib',
-  isha: 'Isha',
-};
-
-export type PrayerMadhab = 'Shafi' | 'Hanafi';
-
-export type PrayerCalculationMethodId = 'NorthAmerica' | 'MuslimWorldLeague' | 'Egyptian';
-
-export type AthanStyle = 'mecca' | 'medina' | 'simple';
-
-const ATHAN_STYLES: AthanStyle[] = ['mecca', 'medina', 'simple'];
-
-const CALC_METHOD_IDS: PrayerCalculationMethodId[] = [
-  'NorthAmerica',
-  'MuslimWorldLeague',
-  'Egyptian',
-];
+export {
+  ALL_PRAYER_KEYS,
+  ATHAN_STYLES,
+  CALC_METHOD_IDS,
+  PRAYER_LABELS,
+  PRAYER_MADHABS,
+} from '../lib/prayerCatalog';
+export type {
+  AthanStyle,
+  PrayerCalculationMethodId,
+  PrayerKey,
+  PrayerMadhab,
+} from '../lib/prayerCatalog';
 
 function isPrayerKey(x: unknown): x is PrayerKey {
-  return typeof x === 'string' && ALL_PRAYER_KEYS.includes(x as PrayerKey);
+  return typeof x === 'string' && (ALL_PRAYER_KEYS as readonly string[]).includes(x);
 }
 
 export interface PrayerConfig {
@@ -71,7 +68,7 @@ function normalizePrayerConfig(raw: Partial<PrayerConfig>): PrayerConfig {
 
   const method =
     typeof raw.calculationMethod === 'string' &&
-    CALC_METHOD_IDS.includes(raw.calculationMethod as PrayerCalculationMethodId)
+    (CALC_METHOD_IDS as readonly string[]).includes(raw.calculationMethod)
       ? (raw.calculationMethod as PrayerCalculationMethodId)
       : DEFAULT_PRAYER_CONFIG.calculationMethod;
 
@@ -91,7 +88,8 @@ function normalizePrayerConfig(raw: Partial<PrayerConfig>): PrayerConfig {
   athanVolume = Math.max(0, Math.min(100, Math.round(athanVolume)));
 
   const athanStyle: AthanStyle =
-    typeof raw.athanStyle === 'string' && ATHAN_STYLES.includes(raw.athanStyle as AthanStyle)
+    typeof raw.athanStyle === 'string' &&
+    (ATHAN_STYLES as readonly string[]).includes(raw.athanStyle)
       ? (raw.athanStyle as AthanStyle)
       : DEFAULT_PRAYER_CONFIG.athanStyle;
 
@@ -135,7 +133,9 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         applyPrayerCalculationFromConfig(merged);
         set({ prayerConfig: merged, hydrated: true });
         return;
-      } catch { /* fall through */ }
+      } catch (error) {
+        console.warn('Failed to parse stored prayer config. Falling back to defaults.', error);
+      }
     }
     applyPrayerCalculationFromConfig(DEFAULT_PRAYER_CONFIG);
     set({ prayerConfig: DEFAULT_PRAYER_CONFIG, hydrated: true });

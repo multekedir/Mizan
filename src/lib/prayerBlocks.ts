@@ -13,31 +13,86 @@ export const PRAYER_BLOCK_ORDER = [
 export type PrayerBlockKey = (typeof PRAYER_BLOCK_ORDER)[number];
 
 export const PRAYER_BLOCK_DISPLAY: Record<PrayerBlockKey, string> = {
-  'after-fajr':    'After Fajr (Morning Block)',
-  'during-nap':    'During Nap',
+  'after-fajr': 'After Fajr (Morning Block)',
+  'during-nap': 'During Nap',
   'before-jumuah': "Before Jumu'ah (Pre-Prayer Block)",
-  'after-dhuhr':   "After Dhuhr / After Jumu'ah (Midday Block)",
-  'after-asr':     'After Asr (Afternoon Block)',
+  'after-dhuhr': "After Dhuhr / After Jumu'ah (Midday Block)",
+  'after-asr': 'After Asr (Afternoon Block)',
   'after-maghrib': 'After Maghrib (Evening Block)',
-  'before-isha':   'Before Isha (Pre-Night Block)',
-  'after-isha':    'After Isha (Night Block)',
-  'before-sleep':  'Before Sleep (Wind-down)',
+  'before-isha': 'Before Isha (Pre-Night Block)',
+  'after-isha': 'After Isha (Night Block)',
+  'before-sleep': 'Before Sleep (Wind-down)',
 };
+
+const PRAYER_BLOCK_PATTERNS: Array<{
+  key: PrayerBlockKey;
+  patterns: RegExp[];
+}> = [
+  {
+    key: 'after-fajr',
+    patterns: [/^after\s+fajr\b/, /^post[-\s]?fajr\b/],
+  },
+  {
+    key: 'during-nap',
+    patterns: [
+      /^during\s+nap\b/,
+      /^nap\s*time\b/,
+      /^during\s+(child|baby|toddler).*\bnap\b/,
+    ],
+  },
+  {
+    key: 'before-jumuah',
+    patterns: [
+      /^before\s+jum(u'?ah|mah)\b/,
+      /^pre[-\s]?jum(u'?ah|mah)\b/,
+      /^before\s+friday\s+prayer\b/,
+    ],
+  },
+  {
+    key: 'after-dhuhr',
+    patterns: [
+      /^after\s+(dhuhr|duhr|zuhr)\b/,
+      /^after\s+jum(u'?ah|mah)\b/,
+      /^post[-\s]?(dhuhr|duhr|zuhr)\b/,
+      /^after\s+friday\s+prayer\b/,
+    ],
+  },
+  {
+    key: 'after-asr',
+    patterns: [/^after\s+asr\b/, /^post[-\s]?asr\b/],
+  },
+  {
+    key: 'after-maghrib',
+    patterns: [/^after\s+maghrib\b/, /^post[-\s]?maghrib\b/],
+  },
+  {
+    key: 'before-isha',
+    patterns: [/^before\s+isha\b/, /^pre[-\s]?isha\b/],
+  },
+  {
+    key: 'after-isha',
+    patterns: [/^after\s+isha\b/, /^post[-\s]?isha\b/],
+  },
+  {
+    key: 'before-sleep',
+    patterns: [/^before\s+sleep\b/, /^bedtime\b/, /^before\s+bed\b/, /^wind[-\s]?down\b/],
+  },
+];
 
 export function getPrayerBlockKey(time: string | null | undefined): PrayerBlockKey | null {
   if (!time) return null;
-  const t = time.toLowerCase().trim();
 
-  if (t.startsWith('after fajr'))                                      return 'after-fajr';
-  if (t.startsWith('during nap') || t.startsWith("during child"))      return 'during-nap';
-  if (t.startsWith('before jum') || t.startsWith('before friday'))     return 'before-jumuah';
-  if (t.startsWith('after dhuhr') || t.startsWith('after jum') ||
-      t.startsWith('after friday'))                                      return 'after-dhuhr';
-  if (t.startsWith('after asr'))                                        return 'after-asr';
-  if (t.startsWith('after maghrib'))                                    return 'after-maghrib';
-  if (t.startsWith('before isha'))                                      return 'before-isha';
-  if (t.startsWith('after isha'))                                       return 'after-isha';
-  if (t.startsWith('before sleep'))                                     return 'before-sleep';
+  const normalized = time
+    .toLowerCase()
+    .trim()
+    .replace(/['‘’]/g, "'")
+    .replace(/\s+/g, ' ');
+
+  for (const block of PRAYER_BLOCK_PATTERNS) {
+    if (block.patterns.some((pattern) => pattern.test(normalized))) {
+      return block.key;
+    }
+  }
 
   return null;
 }

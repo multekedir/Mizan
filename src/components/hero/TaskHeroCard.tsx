@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Check, X } from 'lucide-react';
+import { ArrowRight, Check, X } from 'lucide-react';
 import type { TaskRow } from '../../db/database';
 import { useTaskStore } from '../../stores/taskStore';
 import { usePeopleStore } from '../../stores/peopleStore';
@@ -101,7 +101,7 @@ export function TaskHeroCard({ task, onToggle, onDelete, hidePrayerTime = false 
             aria-label="Move to next day"
             title="Move to tomorrow"
           >
-            →
+            <ArrowRight className="h-5 w-5" strokeWidth={2.5} aria-hidden />
           </button>
 
           {/* Delete */}
@@ -170,9 +170,10 @@ export function TaskHeroCard({ task, onToggle, onDelete, hidePrayerTime = false 
                   <button
                     type="button"
                     onClick={() => void moveToNextDay(task.id)}
-                    className="bg-mizan-success text-white rounded-2xl px-4 py-1.5 text-sm font-semibold active:scale-95"
+                    className="bg-mizan-success text-white inline-flex items-center justify-center gap-1.5 rounded-2xl px-4 py-1.5 text-sm font-semibold active:scale-95"
                   >
-                    Move →
+                    Move
+                    <ArrowRight className="h-5 w-5 shrink-0" strokeWidth={2.5} aria-hidden />
                   </button>
                 </div>
               </div>

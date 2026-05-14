@@ -5,6 +5,7 @@ import {
   Madhab,
   Prayer,
 } from 'adhan';
+import { PRAYER_LABELS, type PrayerKey } from '../lib/prayerCatalog';
 import type {
   PrayerCalculationMethodId,
   PrayerConfig,
@@ -41,18 +42,10 @@ export function applyPrayerCalculationFromConfig(cfg: PrayerConfig): void {
     cfg.calculationMethod in METHOD_BUILDERS ? cfg.calculationMethod : 'NorthAmerica';
 }
 
-export type PrayerKey = 'fajr' | 'dhuhr' | 'asr' | 'maghrib' | 'isha';
+export type { PrayerKey } from '../lib/prayerCatalog';
 
 /** Keys returned by `nextPrayer` (excluding `none`). */
 export type NextPrayerKey = Exclude<ReturnType<PrayerTimes['nextPrayer']>, 'none'>;
-
-export const PRAYER_LABELS: Record<PrayerKey, string> = {
-  fajr: 'Fajr',
-  dhuhr: 'Dhuhr',
-  asr: 'Asr',
-  maghrib: 'Maghrib',
-  isha: 'Isha',
-};
 
 const NEXT_PRAYER_NAME: Record<NextPrayerKey, string> = {
   fajr: PRAYER_LABELS.fajr,

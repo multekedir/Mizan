@@ -29,6 +29,8 @@ export function AssistantModal({ open, onClose }: Props) {
   const setGhostTaskMonthDay = useAssistantStore((s) => s.setGhostTaskMonthDay);
   const commitSelectedTasks = useAssistantStore((s) => s.commitSelectedTasks);
   const dismissMessageTasks = useAssistantStore((s) => s.dismissMessageTasks);
+  const toggleGhostEvent = useAssistantStore((s) => s.toggleGhostEvent);
+  const commitSelectedEvents = useAssistantStore((s) => s.commitSelectedEvents);
   const clearConversation = useAssistantStore((s) => s.clearConversation);
   const clearError = useAssistantStore((s) => s.clearError);
 
@@ -205,6 +207,8 @@ export function AssistantModal({ open, onClose }: Props) {
                     onMonthDayChange={(taskId, day) => setGhostTaskMonthDay(msg.id, taskId, day)}
                     onCommit={() => commitSelectedTasks(msg.id)}
                     onDismiss={() => dismissMessageTasks(msg.id)}
+                    onToggleEvent={(eventId) => toggleGhostEvent(msg.id, eventId)}
+                    onCommitEvents={() => commitSelectedEvents(msg.id)}
                   />
                 ))}
               </motion.div>

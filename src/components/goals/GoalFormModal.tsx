@@ -1,38 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import {
-  Heart, BookOpen, Moon, Users, Home, Dumbbell,
-  Calendar, Target, X,
-} from 'lucide-react';
+import { X } from 'lucide-react';
+import { inferCategoryKey, type CategoryKey } from '../../lib/categories';
+import { CATEGORIES } from '../../lib/categoryVisuals';
 import { useGoalStore } from '../../stores/goalStore';
 import { usePeopleStore } from '../../stores/peopleStore';
-
-// ── Category picker data ──────────────────────────────────────────────────────
-
-const CATEGORIES: { key: string; label: string; icon: React.ReactNode; color: string }[] = [
-  { key: 'iman',      label: 'Iman',      icon: <Heart className="w-5 h-5" />,    color: 'text-rose-600 bg-rose-100' },
-  { key: 'quran',     label: 'Quran',     icon: <BookOpen className="w-5 h-5" />, color: 'text-amber-600 bg-amber-100' },
-  { key: 'prayer',    label: 'Prayer',    icon: <Moon className="w-5 h-5" />,     color: 'text-indigo-600 bg-indigo-100' },
-  { key: 'parenting', label: 'Parenting', icon: <Users className="w-5 h-5" />,    color: 'text-sky-600 bg-sky-100' },
-  { key: 'home',      label: 'Home',      icon: <Home className="w-5 h-5" />,     color: 'text-orange-600 bg-orange-100' },
-  { key: 'fitness',   label: 'Fitness',   icon: <Dumbbell className="w-5 h-5" />, color: 'text-lime-600 bg-lime-100' },
-  { key: 'spiritual', label: 'Spiritual', icon: <Heart className="w-5 h-5" />,    color: 'text-violet-600 bg-violet-100' },
-  { key: 'fasting',   label: 'Fasting',   icon: <Moon className="w-5 h-5" />,     color: 'text-purple-600 bg-purple-100' },
-  { key: 'review',    label: 'Review',    icon: <Calendar className="w-5 h-5" />, color: 'text-neutral-600 bg-neutral-100' },
-  { key: 'default',   label: 'Other',     icon: <Target className="w-5 h-5" />,   color: 'text-mizan-text bg-mizan-surfaceSoft' },
-];
-
-function inferCategoryKey(title: string): string | undefined {
-  const t = title.toLowerCase();
-  if (/iman|quran|dhikr|dua|prayer|spiritual|deen|faith|allah|worship|tafsir/.test(t)) return 'iman';
-  if (/fit|health|exercise|workout|gym|weight|active|body/.test(t)) return 'fitness';
-  if (/clean|house|home|tidy|organiz|room|kitchen|bathroom|declutter/.test(t)) return 'home';
-  if (/child|kid|parent|parenting|family|gentle/.test(t)) return 'parenting';
-  if (/study|learn|knowledge|read|book/.test(t)) return 'review';
-  if (/sabr|patient|patience|calm/.test(t)) return 'spiritual';
-  if (/productiv|focus|discipline|habit/.test(t)) return 'review';
-  return undefined;
-}
 
 // ── Modal ─────────────────────────────────────────────────────────────────────
 
@@ -49,7 +21,7 @@ export function GoalFormModal({ open, onClose, onCreated, nested = false }: Prop
 
   const [title, setTitle] = useState('');
   const [assignees, setAssignees] = useState<string[]>([]);
-  const [category, setCategory] = useState<string | undefined>(undefined);
+  const [category, setCategory] = useState<CategoryKey | undefined>(undefined);
   const [manualCategory, setManualCategory] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 

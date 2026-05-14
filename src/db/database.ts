@@ -1,4 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie';
+import type { CategoryKey } from '../lib/categories';
 
 export interface TaskRow {
   id: string;
@@ -22,6 +23,12 @@ export interface TaskRow {
   goalId?: string;
   completed: boolean;
   logicalDayKey: string;
+  /**
+   * The stable creation-day key used as the reference point for interval schedules.
+   * Never updated after creation, even when the task is moved or cloned.
+   * Falls back to logicalDayKey for rows created before this field was added.
+   */
+  anchorLogicalDayKey?: string;
   sortOrder: number;
 }
 
@@ -29,12 +36,14 @@ export interface GoalRow {
   id: string;
   title: string;
   assignee?: string;
-  category?: string;
+  category?: CategoryKey;
   recurring: boolean;
   /** Same format as TaskRow.schedule (optional). */
   schedule?: string;
   completed: boolean;
   logicalDayKey: string;
+  /** Stable anchor for interval schedule math. See TaskRow.anchorLogicalDayKey. */
+  anchorLogicalDayKey?: string;
   sortOrder: number;
 }
 
@@ -81,6 +90,8 @@ export class MizanDB extends Dexie {
     this.version(4).stores({});
     // version 5: tasks.goalId field
     this.version(5).stores({ tasks: 'id, logicalDayKey, assignee, completed, goalId' });
+    // version 6: tasks.anchorLogicalDayKey + goals.anchorLogicalDayKey (no new index needed)
+    this.version(6).stores({});
   }
 }
 

@@ -1,8 +1,16 @@
 """Intent classification and request-type detection."""
 from __future__ import annotations
 
+import functools
 import re
+from dataclasses import dataclass
 from datetime import date, timedelta
+
+try:
+    from hijridate import Gregorian, Hijri
+    _HIJRIDATE_AVAILABLE = True
+except ImportError:
+    _HIJRIDATE_AVAILABLE = False
 
 
 # ── intent patterns ───────────────────────────────────────────────────────────
@@ -83,6 +91,38 @@ INTENT_PATTERNS: dict[str, re.Pattern] = {
         re.IGNORECASE,
     ),
 }
+
+# Lookup: user is asking what already exists on a given day — do NOT generate new tasks.
+_SCHEDULE_LOOKUP_RE = re.compile(
+    r'\b(what (do i|do we) (have to |need to )(do|focus on|work on)|'
+    r'what (do i|do we) have (today|tomorrow|this week|on \w+day|'
+    r'monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|wed|thu|fri|sat|sun)|'
+    r"what'?s (on my |on the |my )?(schedule|agenda|calendar)|"
+    r'(anything|what) (happening|planned|scheduled|on) (today|tomorrow|this week|on \w+day|'
+    r'monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|wed|thu|fri|sat|sun))\b',
+    re.IGNORECASE,
+)
+
+# Suggestion: user wants new task ideas — keep in task mode.
+_SCHEDULE_QUERY_RE = re.compile(
+    r'\b(what (should i|should we) (have to |need to )?(do|focus on|work on)|'
+    r"what'?s (on my |the |my )?(plan)\b)",
+    re.IGNORECASE,
+)
+
+
+def is_schedule_lookup(message: str) -> bool:
+    """True for 'what do I have to do on Wednesday' — lookup, not task generation."""
+    return bool(_SCHEDULE_LOOKUP_RE.search(message))
+
+
+_TOMORROW_RE = re.compile(r'\btomorrow\b', re.IGNORECASE)
+
+
+def is_tomorrow_request(message: str) -> bool:
+    """True when the user wants multiple task suggestions specifically for tomorrow."""
+    return bool(_TOMORROW_RE.search(message)) and not is_single_task_creation(message)
+
 
 _TASK_INTENTS = {"task_request", "cleaning_request", "edit_request", "situation_request", "goal_statement"}
 
@@ -211,6 +251,11 @@ def has_event_target_date(message: str) -> bool:
     return bool(_EVENT_PLAN_RE.search(message)) or bool(_SPECIFIC_DATE_RE.search(message))
 
 
+def is_islamic_holiday_request(message: str) -> bool:
+    """True when the message mentions an Islamic lunar holiday (dates are approximate)."""
+    return any(h.pattern.search(message) for h in _ISLAMIC_HOLIDAYS)
+
+
 def is_birthday_without_date(message: str) -> bool:
     """True when the message mentions a birthday/anniversary but no specific date is given.
     Mother's Day / Father's Day are excluded because their date is computable."""
@@ -221,15 +266,28 @@ def is_birthday_without_date(message: str) -> bool:
     return not bool(_SPECIFIC_DATE_RE.search(message))
 
 
+_CALENDAR_RE = re.compile(
+    r'\b(add\s+to\s+(my\s+)?calendar|schedule\s+(an?\s+)?event|put.*in\s+(my\s+)?calendar|'
+    r'calendar\s+event|create\s+(an?\s+)?event|add\s+(an?\s+)?event|book.*calendar|'
+    r'add.*appointment|schedule.*appointment|remind.*calendar)\b',
+    re.IGNORECASE,
+)
+
+
+def is_calendar_request(message: str) -> bool:
+    return bool(_CALENDAR_RE.search(message))
+
+
 def should_generate_tasks(message: str) -> bool:
+    if _SCHEDULE_LOOKUP_RE.search(message):
+        return False
     intent, _ = classify_intent(message)
     if intent in _TASK_INTENTS:
         return True
+    if _SCHEDULE_QUERY_RE.search(message):
+        return True
     if intent == "iman_request":
-        return bool(re.search(
-            r"\b(plan|help|suggest|routine|tasks?|what should|how (can|do))\b",
-            message, re.IGNORECASE,
-        ))
+        return bool(_IMAN_TASK_RE.search(message))
     if is_event_plan_request(message) or has_event_target_date(message):
         return True
     return False
@@ -252,15 +310,15 @@ def _event_honoree(message: str, assignable: list[str]) -> str | None:
 
 def _nth_weekday(year: int, month: int, weekday: int, n: int) -> date:
     """nth occurrence (1-based) of weekday (0=Mon…6=Sun) in the given month."""
-    d = date(year, month, 1)
-    while d.weekday() != weekday:
-        d += timedelta(days=1)
-    return d + timedelta(weeks=n - 1)
+    first = date(year, month, 1)
+    offset = (weekday - first.weekday()) % 7
+    return first + timedelta(days=offset + (n - 1) * 7)
 
 
-def _day_label(d: date) -> str:
+def _day_label(d: date, approximate: bool = False) -> str:
     """Short label for use in the task time field: 'Wed May 6'."""
-    return f"{d.strftime('%a')} {d.strftime('%b')} {d.day}"
+    label = f"{d.strftime('%a')} {d.strftime('%b')} {d.day}"
+    return f"{label} (may vary)" if approximate else label
 
 
 _MONTH_MAP = {
@@ -268,28 +326,95 @@ _MONTH_MAP = {
     'jul': 7, 'aug': 8, 'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12,
 }
 
-# (regex, month, day) for fixed-date holidays; Islamic dates are approximate
-_FIXED_HOLIDAYS: list[tuple[str, int, int]] = [
-    (r"\beid\s+al[- ]?adha\b",      6, 15),
-    (r"\beid\s+al[- ]?fitr\b",      4, 10),
-    (r"\beid\b",                    4, 10),   # generic "Eid" → Eid al-Fitr
-    (r"\b(ramadan|ramzan)\b",        3,  1),
-    (r"\bvalentine'?s?\s*(day)?\b", 2, 14),
+_NEW_YEAR_RE = re.compile(r"\bnew\s+year'?s?\b", re.IGNORECASE)
+
+_IMAN_TASK_RE = re.compile(
+    r"\b(plan|help|suggest|routine|tasks?|what should|how (can|do))\b",
+    re.IGNORECASE,
+)
+
+@dataclass(frozen=True)
+class _GregorianHoliday:
+    pattern: re.Pattern
+    month: int
+    day: int
+
+
+@dataclass(frozen=True)
+class _IslamicHoliday:
+    pattern: re.Pattern
+    hijri_month: int
+    hijri_day: int
+    duration_days: int
+
+
+# Fixed Gregorian holidays — patterns compiled once.
+_FIXED_GREGORIAN_HOLIDAYS: list[_GregorianHoliday] = [
+    _GregorianHoliday(re.compile(r"\bvalentine'?s?\s*(day)?\b", re.IGNORECASE), 2, 14),
+]
+
+# Islamic holidays mapped to Hijri dates.
+# Order matters — more specific patterns must come before generic ones.
+_ISLAMIC_HOLIDAYS: list[_IslamicHoliday] = [
+    _IslamicHoliday(re.compile(r"\b(ramadan|ramzan|ramadhan|start\s+of\s+ramadan|first\s+day\s+of\s+ramadan)\b", re.IGNORECASE), 9, 1, 30),
+    _IslamicHoliday(re.compile(r"\b(last\s+10\s+nights?|last\s+ten\s+nights?|final\s+10\s+nights?|final\s+ten\s+nights?)\s+(of\s+)?ramadan\b", re.IGNORECASE), 9, 21, 10),
+    _IslamicHoliday(re.compile(r"\b(laylat\s+al[- ]?qadr|lailat\s+al[- ]?qadr|night\s+of\s+power|27th\s+night\s+of\s+ramadan)\b", re.IGNORECASE), 9, 27, 1),
+    _IslamicHoliday(re.compile(r"\b(eid\s+al[- ]?fitr|eid\s+ul[- ]?fitr|eid\s+fitr|ramadan\s+eid)\b", re.IGNORECASE), 10, 1, 1),
+    _IslamicHoliday(re.compile(r"\b(six\s+days\s+of\s+shawwal|6\s+days\s+of\s+shawwal|shawwal\s+fasts?)\b", re.IGNORECASE), 10, 2, 29),
+    _IslamicHoliday(re.compile(r"\b(hajj|hajj\s+season|days\s+of\s+hajj)\b", re.IGNORECASE), 12, 8, 6),
+    _IslamicHoliday(re.compile(r"\b(day\s+of\s+arafah|arafa|arafat|yawm\s+arafah|yawm\s+arafa)\b", re.IGNORECASE), 12, 9, 1),
+    _IslamicHoliday(re.compile(r"\b(eid\s+al[- ]?adha|eid\s+ul[- ]?adha|eid\s+adha|qurbani\s+eid|big\s+eid)\b", re.IGNORECASE), 12, 10, 4),
+    _IslamicHoliday(re.compile(r"\b(days\s+of\s+tashreeq|tashreeq)\b", re.IGNORECASE), 12, 11, 3),
+    _IslamicHoliday(re.compile(r"\b(islamic\s+new\s+year|hijri\s+new\s+year|new\s+hijri\s+year|1st\s+muharram)\b", re.IGNORECASE), 1, 1, 1),
+    _IslamicHoliday(re.compile(r"\b(ashura|ashoora|ashuraa|day\s+of\s+ashura|10th\s+of\s+muharram)\b", re.IGNORECASE), 1, 10, 1),
+    _IslamicHoliday(re.compile(r"\b(white\s+days|ayyam\s+al[- ]?beed|13th\s+14th\s+15th)\b", re.IGNORECASE), 1, 13, 3),
+    _IslamicHoliday(re.compile(r"\b(rajab|month\s+of\s+rajab)\b", re.IGNORECASE), 7, 1, 30),
+    _IslamicHoliday(re.compile(r"\b(sha[''\- ]?ban|shaban|month\s+of\s+shaban)\b", re.IGNORECASE), 8, 1, 30),
+    _IslamicHoliday(re.compile(r"\b(mid\s+sha[''\- ]?ban|middle\s+of\s+shaban|nisf\s+sha[''\- ]?ban|15th\s+of\s+shaban)\b", re.IGNORECASE), 8, 15, 1),
+    _IslamicHoliday(re.compile(r"\b(rabi\s+al[- ]?awwal|rabiul\s+awwal|rabee\s+al[- ]?awwal)\b", re.IGNORECASE), 3, 1, 30),
+    _IslamicHoliday(re.compile(r"\b(mawlid|milad\s+un[- ]?nabi|eid\s+milad|prophet'?s\s+birthday)\b", re.IGNORECASE), 3, 12, 1),
+    # Generic "Eid" must be LAST so specific patterns above match first
+    _IslamicHoliday(re.compile(r"\beid\b", re.IGNORECASE), 10, 1, 1),
 ]
 
 
-def get_event_date(message: str) -> date | None:
+def _hijri_to_gregorian_date(hijri_year: int, hijri_month: int, hijri_day: int) -> date:
+    g = Hijri(hijri_year, hijri_month, hijri_day).to_gregorian()
+    return date(g.year, g.month, g.day)
+
+
+@functools.lru_cache(maxsize=128)
+def _next_islamic_holiday_date(
+    hijri_month: int,
+    hijri_day: int,
+    today: date,
+) -> date | None:
+    """Return the next Gregorian date for a Hijri month/day, checking current and next Hijri year."""
+    if not _HIJRIDATE_AVAILABLE:
+        return None
+    current_hijri = Gregorian(today.year, today.month, today.day).to_hijri()
+    candidates: list[date] = []
+    for hijri_year in (current_hijri.year, current_hijri.year + 1):
+        try:
+            candidates.append(_hijri_to_gregorian_date(hijri_year, hijri_month, hijri_day))
+        except ValueError:
+            continue
+    upcoming = [d for d in candidates if d >= today]
+    return min(upcoming) if upcoming else None
+
+
+def get_event_date(message: str, today: date | None = None) -> date | None:
     """
     Return the target date for a holiday or specific date mentioned in the message.
-    Floating holidays (Mother's Day etc.) are computed by weekday rule.
-    Fixed-date holidays use approximate Gregorian dates.
-    Explicit dates like 'May 11' are parsed directly.
-    Returns None if nothing is detected.
+
+    Gregorian holidays are computed directly.
+    Islamic holidays are computed from Hijri calendar via hijridate.
+    Returns None if nothing is detected or the library is unavailable.
     """
-    today = date.today()
+    today = today or date.today()
     year = today.year
 
-    # Floating holidays
+    # Floating Gregorian holidays
     if _MOTHERS_DAY_RE.search(message):
         d = _nth_weekday(year, 5, 6, 2)    # 2nd Sunday of May
         return d if d >= today else _nth_weekday(year + 1, 5, 6, 2)
@@ -299,16 +424,22 @@ def get_event_date(message: str) -> date | None:
         return d if d >= today else _nth_weekday(year + 1, 6, 6, 3)
 
     # New Year always points to the upcoming Jan 1
-    if re.search(r"\bnew\s+year'?s?\b", message, re.IGNORECASE):
-        return date(year + 1, 1, 1)
+    if _NEW_YEAR_RE.search(message):
+        d = date(year, 1, 1)
+        return d if d >= today else date(year + 1, 1, 1)
 
-    # Fixed-date holidays
-    for pattern, month, day in _FIXED_HOLIDAYS:
-        if re.search(pattern, message, re.IGNORECASE):
-            d = date(year, month, day)
-            return d if d >= today else date(year + 1, month, day)
+    # Islamic lunar holidays — computed from Hijri calendar
+    for h in _ISLAMIC_HOLIDAYS:
+        if h.pattern.search(message):
+            return _next_islamic_holiday_date(h.hijri_month, h.hijri_day, today)
 
-    # Explicit date in message: "May 11", "birthday on March 5", etc.
+    # Fixed Gregorian holidays
+    for g in _FIXED_GREGORIAN_HOLIDAYS:
+        if g.pattern.search(message):
+            d = date(year, g.month, g.day)
+            return d if d >= today else date(year + 1, g.month, g.day)
+
+    # Explicit date in message: "May 11", "birthday on March 5"
     m = _SPECIFIC_DATE_RE.search(message)
     if m:
         month_num = _MONTH_MAP.get(m.group(1)[:3].lower())

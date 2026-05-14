@@ -1,16 +1,17 @@
 import { create } from 'zustand';
+import type { CategoryKey } from '../lib/categories';
 
 export interface CelebrationPayload {
   key: number;
   goalTitle: string;
-  goalCategory?: string;
+  goalCategory?: CategoryKey;
   taskTitle: string;
 }
 
 interface CelebrationState {
   active: CelebrationPayload | null;
   _seq: number;
-  show: (goalTitle: string, taskTitle: string, goalCategory?: string) => void;
+  show: (goalTitle: string, taskTitle: string, goalCategory?: CategoryKey) => void;
   dismiss: () => void;
 }
 

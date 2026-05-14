@@ -8,78 +8,25 @@ import {
 } from '../services/assistantService';
 import { useTaskStore } from './taskStore';
 import { useGoalStore } from './goalStore';
-import { getZonedDayOfWeek } from '../lib/logicalDay';
-import type { SuggestedTask } from '../services/assistantService';
+import { useAuthStore, isGoogleTokenValid } from './authStore';
+import {
+  createCalendarEvent,
+  type RecurrenceFrequency,
+} from '../services/googleCalendarService';
 
-const MONTH_NUMS: Record<string, number> = {
-  jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
-  jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12,
-};
-
-/** Parse a day label like "Sun May 10" → "2026-05-10", or return null if not a date label. */
-function parseDateLabel(time: string | null | undefined): string | null {
-  if (!time) return null;
-  const m = time.match(/^(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+([A-Za-z]{3,})\s+(\d{1,2})/i);
-  if (!m) return null;
-  const month = MONTH_NUMS[m[1].slice(0, 3).toLowerCase()];
-  const day = parseInt(m[2], 10);
-  if (!month || !day) return null;
-  const today = new Date();
-  let year = today.getFullYear();
-  if (new Date(year, month - 1, day) < today) year += 1;
-  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+function toRecurrenceFrequency(raw: string | null | undefined): RecurrenceFrequency {
+  const v = (raw ?? 'none').trim().toLowerCase();
+  if (v === 'daily' || v === 'weekly' || v === 'monthly' || v === 'none') return v;
+  return 'none';
 }
-
-const DAY_NAMES: Record<string, number> = {
-  sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6,
-  sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6,
-};
-
-function parseSuggestedDay(
-  suggestedDay: string | null | undefined,
-  frequency: string,
-  todayDow: number,
-): { selectedDay: number; selectedMonthDay: number } {
-  if (!suggestedDay) return { selectedDay: todayDow, selectedMonthDay: 1 };
-  if (frequency === 'weekly') {
-    // Handle "first Sunday", "every Monday", "Saturday", "6", etc.
-    const words = suggestedDay.toLowerCase().split(/\s+/);
-    for (const word of words) {
-      const n = DAY_NAMES[word];
-      if (n !== undefined) return { selectedDay: n, selectedMonthDay: 1 };
-    }
-    return { selectedDay: todayDow, selectedMonthDay: 1 };
-  }
-  if (frequency === 'monthly') {
-    const n = parseInt(suggestedDay.replace(/\D/g, ''), 10);
-    return { selectedDay: todayDow, selectedMonthDay: n >= 1 && n <= 31 ? n : 1 };
-  }
-  return { selectedDay: todayDow, selectedMonthDay: 1 };
-}
-
-export interface GhostTask extends SuggestedTask {
-  id: string;
-  selected: boolean;
-  committed: boolean;
-  /** For weekly tasks: day of week (0=Sun…6=Sat). */
-  selectedDay: number;
-  /** For monthly tasks: day of month (1–31). */
-  selectedMonthDay: number;
-  /** Suggested time label from the assistant e.g. "6:00 AM". */
-  time?: string | null;
-  /** Estimated duration e.g. "15 min". */
-  duration?: string | null;
-}
-
-export interface AssistantMessage {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  ghostTasks: GhostTask[];
-  timestamp: Date;
-  isTyping?: boolean;  // true while streaming a JSON-mode response
-  goalTitle?: string;
-}
+import {
+  parseDateLabel,
+  buildGhostTasks,
+  buildGhostEvents,
+  rawToMessage,
+} from '../lib/assistantHelpers';
+import type { AssistantMessage } from '../types/assistant';
+export type { GhostTask, GhostEvent, AssistantMessage } from '../types/assistant';
 
 interface AssistantState {
   messages: AssistantMessage[];
@@ -99,18 +46,10 @@ interface AssistantState {
   setGhostTaskMonthDay: (messageId: string, taskId: string, day: number) => void;
   commitSelectedTasks: (messageId: string) => Promise<void>;
   dismissMessageTasks: (messageId: string) => void;
+  toggleGhostEvent: (messageId: string, eventId: string) => void;
+  commitSelectedEvents: (messageId: string) => Promise<void>;
   clearConversation: () => Promise<void>;
   clearError: () => void;
-}
-
-function rawToMessage(raw: { role: string; content: string }): AssistantMessage {
-  return {
-    id: crypto.randomUUID(),
-    role: raw.role as 'user' | 'assistant',
-    content: raw.content,
-    ghostTasks: [],
-    timestamp: new Date(),
-  };
 }
 
 export const useAssistantStore = create<AssistantState>((set, get) => ({
@@ -123,10 +62,8 @@ export const useAssistantStore = create<AssistantState>((set, get) => ({
   hydrate: async () => {
     try {
       const [rawHistory, notes] = await Promise.all([fetchHistory(), fetchNotes()]);
-      const messages = rawHistory.map(rawToMessage);
-      set({ messages, familyNotes: notes, notesLoaded: true });
+      set({ messages: rawHistory.map(rawToMessage), familyNotes: notes, notesLoaded: true });
     } catch {
-      // Backend not running yet — open with empty state
       set({ notesLoaded: true });
     }
   },
@@ -142,57 +79,49 @@ export const useAssistantStore = create<AssistantState>((set, get) => ({
       role: 'user',
       content: text,
       ghostTasks: [],
+      ghostEvents: [],
       timestamp: new Date(),
     };
-
     set((s) => ({ messages: [...s.messages, userMsg], isLoading: true, error: null }));
 
-    // Create a placeholder assistant message that streams tokens into it
     const assistantMsgId = crypto.randomUUID();
-    const assistantMsg: AssistantMessage = {
-      id: assistantMsgId,
-      role: 'assistant',
-      content: '',
-      ghostTasks: [],
-      timestamp: new Date(),
-    };
-    set((s) => ({ messages: [...s.messages, assistantMsg] }));
+    set((s) => ({
+      messages: [
+        ...s.messages,
+        {
+          id: assistantMsgId,
+          role: 'assistant' as const,
+          content: '',
+          ghostTasks: [],
+          ghostEvents: [],
+          timestamp: new Date(),
+          isTyping: true,
+        },
+      ],
+    }));
 
     try {
       const response = await apiSendMessage(text, (token) => {
         set((s) => ({
           messages: s.messages.map((m) =>
             m.id === assistantMsgId
-              ? { ...m, content: token === null ? m.content : m.content + token, isTyping: token === null && m.content === '' }
+              ? {
+                  ...m,
+                  content: token === null ? m.content : m.content + token,
+                  // Stay in typing state for JSON-mode (null tokens); clear once real text arrives
+                  isTyping: token === null,
+                }
               : m,
           ),
         }));
       });
 
-      // Refresh notes if backend saved new ones
       if (response.memory_updates.length > 0) {
         const notes = await fetchNotes();
         set({ familyNotes: notes });
       }
 
-      const todayDow = getZonedDayOfWeek();
-      const ghostTasks: GhostTask[] = response.tasks.map((t) => {
-        const { selectedDay, selectedMonthDay } = parseSuggestedDay(t.day, t.frequency, todayDow);
-        return {
-          id: crypto.randomUUID(),
-          title: t.title,
-          assignee: t.assignee,
-          frequency: t.frequency,
-          day: t.day,
-          time: t.time ?? null,
-          duration: t.duration ?? null,
-          goalId: t.goalId ?? null,
-          selected: true,
-          committed: false,
-          selectedDay,
-          selectedMonthDay,
-        };
-      });
+      const ghostTasks = buildGhostTasks(response.tasks);
 
       let goalTitle: string | undefined;
       if (response.goal?.title) {
@@ -206,13 +135,11 @@ export const useAssistantStore = create<AssistantState>((set, get) => ({
           goalId = await useGoalStore.getState().addGoal(response.goal.title);
         }
         goalTitle = response.goal.title;
-        // attach goalId to all ghost tasks that don't already have one
         for (const t of ghostTasks) {
           if (!t.goalId) t.goalId = goalId;
         }
       }
 
-      // Light day: move all pending tasks to tomorrow
       if (response.mode === 'light_day') {
         const pendingIds = useTaskStore.getState().tasks
           .filter((t) => !t.completed)
@@ -222,11 +149,19 @@ export const useAssistantStore = create<AssistantState>((set, get) => ({
         }
       }
 
-      // Replace placeholder content with final parsed message + attach tasks
+      const ghostEvents = buildGhostEvents(response.suggested_events ?? []);
+
       set((s) => ({
         messages: s.messages.map((m) =>
           m.id === assistantMsgId
-            ? { ...m, content: response.message || m.content, ghostTasks, goalTitle }
+            ? {
+                ...m,
+                content: response.message || m.content,
+                ghostTasks,
+                ghostEvents,
+                goalTitle,
+                isTyping: false,
+              }
             : m,
         ),
         isLoading: false,
@@ -275,28 +210,39 @@ export const useAssistantStore = create<AssistantState>((set, get) => ({
 
     const addTask = useTaskStore.getState().addTask;
     const toCommit = msg.ghostTasks.filter((t) => t.selected && !t.committed);
+    const committedIds: string[] = [];
 
-    for (const task of toCommit) {
-      const recurring = task.frequency === 'daily' || task.frequency === 'weekly' || task.frequency === 'monthly';
-      const schedule =
-        task.frequency === 'daily' ? 'daily'
-        : task.frequency === 'weekly' ? `weekly:${task.selectedDay}`
-        : task.frequency === 'monthly' ? `monthly:${task.selectedMonthDay}`
-        : undefined;
+    try {
+      for (const task of toCommit) {
+        const recurring =
+          task.frequency === 'daily' || task.frequency === 'weekly' || task.frequency === 'monthly';
+        const schedule =
+          task.frequency === 'daily' ? 'daily'
+          : task.frequency === 'weekly' ? `weekly:${task.selectedDay}`
+          : task.frequency === 'monthly' ? `monthly:${task.selectedMonthDay}`
+          : undefined;
 
-      // If time is a date label ("Sun May 10"), store on that day and clear the time field
-      const targetDayKey = parseDateLabel(task.time) ?? undefined;
-      const time = targetDayKey ? undefined : (task.time ?? undefined);
-      const duration = task.duration ?? undefined;
+        const targetDayKey = parseDateLabel(task.time) ?? undefined;
+        const time = targetDayKey ? undefined : (task.time ?? undefined);
+        const duration = task.duration ?? undefined;
+        const goalId = task.goalId ?? undefined;
 
-      const goalId = task.goalId ?? undefined;
-      await addTask(task.title, task.assignee, recurring, schedule, time, duration, targetDayKey, goalId);
+        await addTask(task.title, task.assignee, recurring, schedule, time, duration, targetDayKey, goalId);
+        committedIds.push(task.id);
+      }
+    } catch (e) {
+      set({ error: e instanceof Error ? e.message : 'Failed to add one or more tasks.' });
     }
 
     set((s) => ({
       messages: s.messages.map((m) =>
         m.id === messageId
-          ? { ...m, ghostTasks: m.ghostTasks.map((t) => (t.selected && !t.committed ? { ...t, committed: true } : t)) }
+          ? {
+              ...m,
+              ghostTasks: m.ghostTasks.map((t) =>
+                committedIds.includes(t.id) ? { ...t, committed: true } : t,
+              ),
+            }
           : m,
       ),
     }));
@@ -305,6 +251,83 @@ export const useAssistantStore = create<AssistantState>((set, get) => ({
   dismissMessageTasks: (messageId) => {
     set((s) => ({
       messages: s.messages.map((m) => (m.id === messageId ? { ...m, ghostTasks: [] } : m)),
+    }));
+  },
+
+  toggleGhostEvent: (messageId, eventId) => {
+    set((s) => ({
+      messages: s.messages.map((m) =>
+        m.id === messageId
+          ? {
+              ...m,
+              ghostEvents: m.ghostEvents.map((e) =>
+                e.id === eventId ? { ...e, selected: !e.selected } : e,
+              ),
+            }
+          : m,
+      ),
+    }));
+  },
+
+  commitSelectedEvents: async (messageId) => {
+    const msg = get().messages.find((m) => m.id === messageId);
+    if (!msg) return;
+
+    const tokens = useAuthStore.getState().googleTokens;
+    if (!isGoogleTokenValid(tokens)) {
+      set({ error: 'Sign in with Google to add calendar events.' });
+      return;
+    }
+
+    const toCommit = msg.ghostEvents.filter((e) => e.selected && !e.committed);
+    const committedIds: string[] = [];
+    const skipped: string[] = [];
+    let commitError: string | null = null;
+
+    for (const ev of toCommit) {
+      if (!ev.date) {
+        skipped.push(ev.title);
+        continue;
+      }
+      try {
+        await createCalendarEvent(
+          {
+            title: ev.title,
+            date: ev.date,
+            startTime: ev.start_time ?? '9:00 AM',
+            endTime: ev.end_time ?? '10:00 AM',
+            recurrence: toRecurrenceFrequency(ev.recurrence),
+          },
+          tokens.accessToken,
+        );
+        committedIds.push(ev.id);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : '';
+        commitError = msg === 'CALENDAR_PERMISSION_DENIED'
+          ? 'Calendar permission denied. Sign out and sign back in with Google to grant calendar access.'
+          : msg || 'Failed to add event to Google Calendar.';
+        break;
+      }
+    }
+
+    const errorParts: string[] = [];
+    if (commitError) errorParts.push(commitError);
+    if (skipped.length > 0) {
+      errorParts.push(`Could not add "${skipped.join('", "')}" — no date returned by assistant.`);
+    }
+    if (errorParts.length > 0) set({ error: errorParts.join(' ') });
+
+    set((s) => ({
+      messages: s.messages.map((m) =>
+        m.id === messageId
+          ? {
+              ...m,
+              ghostEvents: m.ghostEvents.map((e) =>
+                committedIds.includes(e.id) ? { ...e, committed: true } : e,
+              ),
+            }
+          : m,
+      ),
     }));
   },
 

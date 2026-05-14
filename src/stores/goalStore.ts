@@ -1,19 +1,8 @@
 import { create } from 'zustand';
 import { db, type GoalRow } from '../db/database';
+import { categoryKeyFromImport, inferCategoryKey, type CategoryKey } from '../lib/categories';
 import { getLogicalDayKey } from '../lib/logicalDay';
 import { parseBool } from '../lib/parseBool';
-
-function inferCategory(title: string): string | undefined {
-  const t = title.toLowerCase();
-  if (/iman|quran|dhikr|dua|prayer|spiritual|deen|faith|allah|worship|tafsir/.test(t)) return 'iman';
-  if (/fit|health|exercise|workout|gym|weight|active|body/.test(t)) return 'fitness';
-  if (/clean|house|home|tidy|organiz|room|kitchen|bathroom|declutter/.test(t)) return 'home';
-  if (/child|kid|parent|parenting|family|gentle/.test(t)) return 'parenting';
-  if (/study|learn|knowledge|read|book/.test(t)) return 'review';
-  if (/sabr|patient|patience|calm/.test(t)) return 'spiritual';
-  if (/productiv|focus|discipline|habit/.test(t)) return 'review';
-  return undefined;
-}
 
 export interface GoalProgress {
   total: number;
@@ -26,7 +15,7 @@ interface GoalState {
   hydrated: boolean;
   hydrate: () => Promise<void>;
   refreshProgress: () => Promise<void>;
-  addGoal: (title: string, assignee?: string, recurring?: boolean, category?: string) => Promise<string>;
+  addGoal: (title: string, assignee?: string, recurring?: boolean, category?: CategoryKey) => Promise<string>;
   deleteGoal: (id: string) => Promise<void>;
   clearToday: () => Promise<void>;
   importFromJson: (raw: string) => Promise<{ ok: boolean; count?: number; error?: string }>;
@@ -81,7 +70,7 @@ export const useGoalStore = create<GoalState>((set, get) => ({
       id,
       title: title.trim(),
       assignee: assignee?.trim() || undefined,
-      category: categoryOverride ?? inferCategory(title),
+      category: categoryOverride ?? inferCategoryKey(title),
       recurring,
       completed: false,
       logicalDayKey: key,
@@ -164,7 +153,7 @@ export const useGoalStore = create<GoalState>((set, get) => ({
               ? o.date
               : getLogicalDayKey();
           const assignee = o.assignee ? String(o.assignee).trim() : undefined;
-          const category = o.category ? String(o.category).trim() : undefined;
+          const category = categoryKeyFromImport(o.category);
 
           const byTitle = existingByDateTitle.get(logicalDayKey)!;
           const existing = byTitle.get(title);
@@ -240,7 +229,7 @@ export const useGoalStore = create<GoalState>((set, get) => ({
             id: crypto.randomUUID(),
             title,
             assignee: ai >= 0 ? (cols[ai] ?? '').trim() || undefined : undefined,
-            category: ci >= 0 ? (cols[ci] ?? '').trim() || undefined : undefined,
+            category: ci >= 0 ? categoryKeyFromImport((cols[ci] ?? '').trim()) : undefined,
             recurring,
             completed: false,
             logicalDayKey,

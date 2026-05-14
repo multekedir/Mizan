@@ -1,54 +1,12 @@
 import { useState } from 'react';
 import { GoalFormModal } from './GoalFormModal';
-import {
-  Heart,
-  BookOpen,
-  Moon,
-  Users,
-  Home,
-  Dumbbell,
-  Calendar,
-  Target,
-  Plus,
-  X,
-  Check,
-} from 'lucide-react';
+import { Plus, X, Check } from 'lucide-react';
 import { useGoalStore } from '../../stores/goalStore';
 import { usePeopleStore } from '../../stores/peopleStore';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { GoalRow } from '../../db/database';
-
-// ── Category visuals ──────────────────────────────────────────────────────────
-
-const CATEGORY_ICONS: Record<string, React.ReactNode> = {
-  iman:        <Heart className="w-5 h-5" />,
-  quran:       <BookOpen className="w-5 h-5" />,
-  prayer:      <Moon className="w-5 h-5" />,
-  dua:         <Heart className="w-5 h-5" />,
-  charity:     <Heart className="w-5 h-5" />,
-  parenting:   <Users className="w-5 h-5" />,
-  fasting:     <Moon className="w-5 h-5" />,
-  spiritual:   <Heart className="w-5 h-5" />,
-  home:        <Home className="w-5 h-5" />,
-  fitness:     <Dumbbell className="w-5 h-5" />,
-  review:      <Calendar className="w-5 h-5" />,
-  default:     <Target className="w-5 h-5" />,
-};
-
-const CATEGORY_COLORS: Record<string, string> = {
-  iman:        'text-rose-600 bg-rose-100',
-  quran:       'text-amber-600 bg-amber-100',
-  prayer:      'text-indigo-600 bg-indigo-100',
-  dua:         'text-rose-600 bg-rose-100',
-  charity:     'text-rose-600 bg-rose-100',
-  parenting:   'text-sky-600 bg-sky-100',
-  fasting:     'text-purple-600 bg-purple-100',
-  spiritual:   'text-violet-600 bg-violet-100',
-  home:        'text-orange-600 bg-orange-100',
-  fitness:     'text-lime-600 bg-lime-100',
-  review:      'text-neutral-600 bg-neutral-100',
-  default:     'text-mizan-text bg-mizan-surfaceSoft',
-};
+import { normalizeCategoryKey } from '../../lib/categories';
+import { getCategoryVisual } from '../../lib/categoryVisuals';
 
 // ── Assignee avatar (mirrors task card style) ─────────────────────────────────
 
@@ -73,9 +31,7 @@ function GoalItem({ goal }: { goal: GoalRow }) {
   const deleteGoal = useGoalStore((s) => s.deleteGoal);
   const progress = useGoalStore((s) => s.goalProgress[goal.id]);
 
-  const key = goal.category?.toLowerCase() || 'default';
-  const icon = CATEGORY_ICONS[key] ?? CATEGORY_ICONS.default;
-  const colorClass = CATEGORY_COLORS[key] ?? CATEGORY_COLORS.default;
+  const { icon, color: colorClass } = getCategoryVisual(normalizeCategoryKey(goal.category));
 
   return (
     <motion.li

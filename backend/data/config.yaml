@@ -95,3 +95,21 @@ knowledge_base:
         tired parents, achievable during nap time or between prayers.
         Avoid anything requiring sustained physical effort or long focus.
         Small wins build consistency better than ambitious plans.
+
+    - category: "meal_planning"
+      content: >
+        Meal planning should focus on quick, realistic meals for tired parents with a
+        young child. Prefer simple ingredients, leftovers, and meals under 30 minutes.
+        Avoid complicated prep unless the user asks.
+
+    - category: "parenting_toddler"
+      content: >
+        Zayd is a young child and too little for chores. Suggestions involving Zayd
+        should focus on safety, simple routines, gentle Islamic manners, play, food,
+        sleep, and family connection.
+
+    - category: "energy_support"
+      content: >
+        When the parents are overwhelmed or low energy, suggest the smallest useful next
+        step. Avoid long plans. Prefer one-room resets, 10-minute tasks, and encouragement
+        tied to peace, barakah, and function.

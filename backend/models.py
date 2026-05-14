@@ -38,6 +38,12 @@ class CalendarEvent(BaseModel):
     end: str
 
 
+class CompletedHistoryEntry(BaseModel):
+    title: str
+    assignee: str = ""
+    day: str = ""  # logical day key when task was completed
+
+
 class LiveContext(BaseModel):
     members: list[FamilyMember] = []
     prayer_times: PrayerTimes | None = None
@@ -45,8 +51,10 @@ class LiveContext(BaseModel):
     current_tasks: list[ContextTask] = []          # today's tasks (all frequencies)
     recurring_tasks: list[ContextTask] = []        # all recurring task definitions across days
     current_goals: list[ContextGoal] = []
-    completed_history: list[str] = []
+    completed_history: list[CompletedHistoryEntry] = []
     calendar_events: list[CalendarEvent] = []
+    tomorrow_tasks: list[ContextTask] = []         # tasks already scheduled for tomorrow
+    tomorrow_events: list[CalendarEvent] = []      # calendar events already on tomorrow
 
 
 # ── Chat ──────────────────────────────────────────────────────────────────────
@@ -66,6 +74,14 @@ class SuggestedTask(BaseModel):
     goal_id: str | None = None  # ID of a matching active goal, or null
 
 
+class SuggestedEvent(BaseModel):
+    title: str
+    date: str | None = None        # ISO date "2026-05-13"
+    start_time: str | None = None  # "2:00 PM"
+    end_time: str | None = None    # "3:00 PM"
+    recurrence: str | None = None  # "none" | "daily" | "weekly" | "monthly"
+
+
 class GoalSuggestion(BaseModel):
     title: str
 
@@ -73,6 +89,7 @@ class GoalSuggestion(BaseModel):
 class ChatResponse(BaseModel):
     message: str
     tasks: list[SuggestedTask] = []
+    suggested_events: list[SuggestedEvent] = []
     mode: str = "chat"         # "chat" | "tasks"
     memory_updates: list[str] = []
     goal: GoalSuggestion | None = None

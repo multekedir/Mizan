@@ -26,19 +26,9 @@ def _tokens(text: str) -> set[str]:
     return {w for w in re.findall(r"\w+", text.lower()) if w not in _STOP_WORDS and len(w) > 2}
 
 
-def _keyword_score(query: str, content: str) -> float:
-    query_words = _tokens(query)
-    if not query_words:
-        return 0.0
-    content_words = _tokens(content)
-    return len(query_words & content_words) / len(query_words)
-
-
-def _category_boost(query: str, category: str) -> float:
-    q = query.lower()
-    cat = category.lower().replace("_", " ")
-    boost = sum(0.08 for word in re.findall(r"\w+", cat) if len(word) > 2 and word in q)
-    return min(boost, 0.2)
+def _category_boost_from_tokens(query_words: set[str], category: str) -> float:
+    cat_words = {w for w in re.findall(r"\w+", category.lower().replace("_", " ")) if len(w) > 2}
+    return min(0.08 * len(query_words & cat_words), 0.2)
 
 
 class KnowledgeBase:
@@ -46,6 +36,7 @@ class KnowledgeBase:
         self._docs: dict[str, KBDocument] = {}
         self._embed_unavailable: bool = False
         self._magnitudes: dict[str, float] = {}
+        self._token_cache: dict[str, set[str]] = {}
         self._load()
 
     # ── persistence ──────────────────────────────────────────────────────────
@@ -85,6 +76,7 @@ class KnowledgeBase:
             doc.content = content
             doc.embedding = []
             self._magnitudes.pop(doc_id, None)
+            self._token_cache.pop(doc_id, None)
         self._save()
         return doc
 
@@ -93,6 +85,7 @@ class KnowledgeBase:
             return False
         del self._docs[doc_id]
         self._magnitudes.pop(doc_id, None)
+        self._token_cache.pop(doc_id, None)
         self._save()
         return True
 
@@ -114,16 +107,24 @@ class KnowledgeBase:
         return resp.json()["embedding"]
 
     async def _embed_missing(self, docs: list[KBDocument]) -> None:
-        """Concurrently embed all docs missing a cached vector, then persist once."""
+        """Concurrently embed docs missing a cached vector, with concurrency limit."""
         pending = [d for d in docs if not d.embedding]
         if not pending:
             return
-        results = await asyncio.gather(*(self._embed(d.content) for d in pending), return_exceptions=True)
+
+        semaphore = asyncio.Semaphore(4)
+
+        async def _embed_one(doc: KBDocument) -> list[float]:
+            async with semaphore:
+                return await self._embed(doc.content)
+
+        results = await asyncio.gather(*(_embed_one(d) for d in pending), return_exceptions=True)
         dirty = False
         for doc, result in zip(pending, results):
             if isinstance(result, BaseException):
                 continue
             doc.embedding = result  # type: ignore[assignment]
+            self._magnitudes.pop(doc.id, None)
             dirty = True
         if dirty:
             self._save()
@@ -133,6 +134,11 @@ class KnowledgeBase:
             self._magnitudes[doc.id] = math.sqrt(sum(x * x for x in doc.embedding)) if doc.embedding else 0.0
         return self._magnitudes[doc.id]
 
+    def _doc_tokens(self, doc: KBDocument) -> set[str]:
+        if doc.id not in self._token_cache:
+            self._token_cache[doc.id] = _tokens(doc.content)
+        return self._token_cache[doc.id]
+
     # ── retrieval ────────────────────────────────────────────────────────────
 
     def retrieve_keywords(self, query: str) -> list[KBDocument]:
@@ -141,8 +147,13 @@ class KnowledgeBase:
         docs = list(self._docs.values())
         if not docs:
             return []
+        query_words = _tokens(query)
         scored = [
-            (round(_keyword_score(query, d.content) + _category_boost(query, d.category), 4), d)
+            (round(
+                (len(query_words & self._doc_tokens(d)) / len(query_words) if query_words else 0.0)
+                + _category_boost_from_tokens(query_words, d.category),
+                4,
+            ), d)
             for d in docs
         ]
         scored.sort(key=lambda x: x[0], reverse=True)
@@ -160,6 +171,7 @@ class KnowledgeBase:
                 await self._embed_missing(docs)
                 q_emb = await self._embed(query)
                 q_norm = math.sqrt(sum(x * x for x in q_emb))
+                query_words = _tokens(query)
                 scored: list[tuple[float, KBDocument]] = []
                 for doc in docs:
                     if not doc.embedding:
@@ -167,8 +179,8 @@ class KnowledgeBase:
                     dot = sum(x * y for x, y in zip(q_emb, doc.embedding))
                     d_norm = self._doc_norm(doc)
                     cosine = dot / (q_norm * d_norm) if q_norm and d_norm else 0.0
-                    kw = _keyword_score(query, doc.content)
-                    hybrid = 0.65 * cosine + 0.35 * kw + _category_boost(query, doc.category)
+                    kw = len(query_words & self._doc_tokens(doc)) / len(query_words) if query_words else 0.0
+                    hybrid = 0.65 * cosine + 0.35 * kw + _category_boost_from_tokens(query_words, doc.category)
                     if hybrid >= cfg.min_score:
                         scored.append((hybrid, doc))
                 scored.sort(key=lambda x: x[0], reverse=True)

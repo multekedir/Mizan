@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Check, Sparkles, X } from 'lucide-react';
+import type { CategoryKey } from '../../lib/categories';
 import { useCelebrationStore } from '../../stores/celebrationStore';
 
 const CELEBRATION_MESSAGES = {
@@ -66,25 +67,22 @@ function pick(arr: string[]): string {
 }
 
 // Maps goal.category values directly to message buckets
-const CATEGORY_BUCKET: Record<string, keyof typeof CELEBRATION_MESSAGES> = {
+const CATEGORY_BUCKET: Partial<Record<CategoryKey, keyof typeof CELEBRATION_MESSAGES>> = {
   iman:      'iman',
   quran:     'iman',
   prayer:    'iman',
-  dua:       'iman',
   spiritual: 'iman',
   fasting:   'iman',
-  charity:   'iman',
   fitness:   'fitness',
   home:      'house',
   parenting: 'parenting',
-  knowledge: 'knowledge',
   review:    'productivity',
 };
 
-function getMessage(goalTitle: string, goalCategory?: string): string {
+function getMessage(goalTitle: string, goalCategory?: CategoryKey): string {
   // Check explicit category first (most reliable)
   if (goalCategory) {
-    const bucket = CATEGORY_BUCKET[goalCategory.toLowerCase()];
+    const bucket = CATEGORY_BUCKET[goalCategory];
     if (bucket) return pick(CELEBRATION_MESSAGES[bucket]);
   }
 
@@ -108,7 +106,7 @@ function getMessage(goalTitle: string, goalCategory?: string): string {
   return pick(CELEBRATION_MESSAGES.generic);
 }
 
-function CelebrationToast({ goalTitle, goalCategory, taskTitle }: { goalTitle: string; goalCategory?: string; taskTitle: string }) {
+function CelebrationToast({ goalTitle, goalCategory, taskTitle }: { goalTitle: string; goalCategory?: CategoryKey; taskTitle: string }) {
   const dismiss = useCelebrationStore((s) => s.dismiss);
 
   useEffect(() => {

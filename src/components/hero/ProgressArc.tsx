@@ -1,18 +1,9 @@
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 
 interface Props {
   completed: number;
   total: number;
 }
-
-const CX = 100;
-const CY = 100;
-
-const RINGS = [
-  { r: 78, color: 'rgba(210, 160, 74, 0.4)', width: 8 },
-  { r: 64, color: 'rgba(210, 160, 74, 0.65)', width: 7 },
-  { r: 50, color: 'rgba(166, 123, 50, 0.95)', width: 6 },
-];
 
 const PARTICLES = Array.from({ length: 24 }, (_, i) => {
   const angle = (i * 360) / 24;
@@ -47,105 +38,46 @@ function CelebrationBurst() {
 export function ProgressArc({ completed, total }: Props) {
   const pct = total > 0 ? Math.min(1, completed / total) : 0;
   const allDone = total > 0 && completed >= total;
+  const safeTotal = Math.max(0, total);
+
+  const a11y =
+    safeTotal > 0
+      ? ({
+          role: 'progressbar' as const,
+          'aria-valuenow': completed,
+          'aria-valuemin': 0,
+          'aria-valuemax': safeTotal,
+          'aria-label': `${completed} of ${safeTotal} tasks completed`,
+        } as const)
+      : { 'aria-label': 'No tasks for this day' };
 
   return (
-    <motion.div layout className="relative mx-auto w-full max-w-[210px]">
-      <AnimatePresence mode="sync" initial={false}>
-        {allDone ? (
+    <motion.div layout className="relative mx-auto w-full max-w-[280px] min-h-[5.5rem] px-1" {...a11y}>
+      {allDone && <CelebrationBurst />}
+
+      <div className="relative z-10 flex flex-col items-center pt-1 text-center">
+        <motion.span
+          key={completed}
+          initial={{ scale: 0.92, opacity: 0.75 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ type: 'spring', stiffness: 260, damping: 22 }}
+          className="text-mizan-text text-4xl font-bold tabular-nums tracking-tight"
+        >
+          {completed}
+        </motion.span>
+        <p className="text-mizan-textMuted mt-0.5 text-sm font-medium tabular-nums">
+          of {safeTotal} task{safeTotal === 1 ? '' : 's'} completed
+        </p>
+
+        <div className="mt-3 h-2.5 w-full overflow-hidden rounded-full bg-mizan-border/50">
           <motion.div
-            key="full"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.35 }}
-            className="relative"
-          >
-            {/* Full circle rings */}
-            <svg viewBox="0 0 200 200" className="w-full" aria-hidden>
-              {RINGS.map(({ r, color, width }, i) => {
-                const circ = 2 * Math.PI * r;
-                return (
-                  <motion.circle
-                    key={i}
-                    cx={CX}
-                    cy={CY}
-                    r={r}
-                    fill="none"
-                    stroke={color}
-                    strokeWidth={width}
-                    strokeLinecap="round"
-                    strokeDasharray={circ}
-                    initial={{ strokeDashoffset: circ }}
-                    animate={{ strokeDashoffset: 0 }}
-                    transform={`rotate(-90 ${CX} ${CY})`}
-                    transition={{ delay: i * 0.1 + 0.1, type: 'spring', stiffness: 60, damping: 18 }}
-                  />
-                );
-              })}
-            </svg>
-
-            {/* Centered text */}
-            <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-4">
-              <motion.span
-                initial={{ scale: 0.7, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                transition={{ delay: 0.35, type: 'spring', stiffness: 200, damping: 15 }}
-                className="text-mizan-text text-4xl font-bold tabular-nums"
-              >
-                {completed}
-              </motion.span>
-              <span className="text-mizan-text/70 text-sm font-medium tabular-nums">
-                {completed}/{total} tasks
-              </span>
-            </div>
-
-            <CelebrationBurst />
-          </motion.div>
-        ) : (
-          <motion.div
-            key="arc"
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-          >
-            {/* Semicircle arc */}
-            <svg viewBox="0 20 200 82" className="w-full overflow-visible" aria-hidden>
-              {RINGS.map(({ r, color, width }, i) => {
-                const len = Math.PI * r;
-                return (
-                  <motion.path
-                    key={i}
-                    d={`M ${CX - r} ${CY} A ${r} ${r} 0 0 0 ${CX + r} ${CY}`}
-                    fill="none"
-                    stroke={color}
-                    strokeWidth={width}
-                    strokeLinecap="round"
-                    strokeDasharray={`${len}`}
-                    initial={{ strokeDashoffset: len }}
-                    animate={{ strokeDashoffset: len * (1 - pct) }}
-                    transition={{ type: 'spring', stiffness: 80, damping: 18 }}
-                  />
-                );
-              })}
-            </svg>
-
-            {/* Text below the arc in normal flow */}
-            <div className="flex flex-col items-center pt-3 pb-1 text-center">
-              <motion.span
-                key={completed}
-                initial={{ scale: 0.85, opacity: 0.6 }}
-                animate={{ scale: 1, opacity: 1 }}
-                className="text-mizan-text text-4xl font-bold tabular-nums"
-              >
-                {completed}
-              </motion.span>
-              <span className="text-mizan-text/70 text-sm font-medium tabular-nums">
-                {completed}/{total || 0} tasks
-              </span>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+            className="h-full rounded-full bg-gradient-to-r from-[#C4A06A] via-mizan-accent to-mizan-success"
+            initial={false}
+            animate={{ width: `${pct * 100}%` }}
+            transition={{ type: 'spring', stiffness: 90, damping: 20 }}
+          />
+        </div>
+      </div>
     </motion.div>
   );
 }

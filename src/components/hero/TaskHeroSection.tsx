@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { LayoutGroup, motion, AnimatePresence } from 'framer-motion';
-import { Clock, Repeat, X } from 'lucide-react';
+import { Clock, Plus, Repeat, X } from 'lucide-react';
 import { useTaskStore } from '../../stores/taskStore';
 import { useGoalStore } from '../../stores/goalStore';
 import { usePeopleStore } from '../../stores/peopleStore';
@@ -10,6 +10,7 @@ import { shouldAppearToday } from '../../lib/dailyReset';
 import { parseTaskNL, DAY_SHORT } from '../../lib/parseTaskNL';
 import { ProgressArc } from './ProgressArc';
 import { TaskHeroCard } from './TaskHeroCard';
+import { TaskEditModal } from './TaskEditModal';
 import { AssistantModal } from '../assistant/AssistantModal';
 import { useAllDoneCelebrationStore } from '../../stores/allDoneCelebrationStore';
 
@@ -295,6 +296,7 @@ export function TaskHeroSection() {
   const [offsetTasks, setOffsetTasks] = useState<TaskRow[]>([]);
   const [adding, setAdding] = useState(false);
   const [assistantOpen, setAssistantOpen] = useState(false);
+  const [addTaskOpen, setAddTaskOpen] = useState(false);
 
   const isToday = dayOffset === 0;
   const tasks = isToday ? todayTasks : offsetTasks;
@@ -408,6 +410,7 @@ export function TaskHeroSection() {
   return (
     <>
       <AssistantModal open={assistantOpen} onClose={() => setAssistantOpen(false)} />
+      <TaskEditModal open={addTaskOpen} onClose={() => setAddTaskOpen(false)} />
 
       <div className="card-mizan flex flex-1 min-h-0 flex-col gap-3 p-4">
 
@@ -508,6 +511,16 @@ export function TaskHeroSection() {
         {/* Bottom action buttons — add/assistant only for today */}
         {isToday && !adding && (
           <div className="mx-auto flex shrink-0 items-center gap-4">
+            <button
+              type="button"
+              onClick={() => setAddTaskOpen(true)}
+              className="bg-mizan-surfaceSoft text-mizan-text flex h-12 w-12 items-center justify-center rounded-full shadow-sm transition-colors active:scale-95"
+              aria-label="Add task"
+              title="Add Task"
+            >
+              <Plus className="h-6 w-6" strokeWidth={2.5} aria-hidden />
+            </button>
+
             <button
               type="button"
               onClick={() => setAssistantOpen(true)}

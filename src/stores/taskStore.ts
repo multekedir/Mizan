@@ -23,15 +23,23 @@ const _DAY_NAME: Record<string, number> = {
 };
 
 function _scheduleFor(freq: string, day?: string): string | undefined {
-  if (freq === 'daily') return 'daily';
-  if (freq === 'weekly') {
-    const n = day ? _DAY_NAME[day.toLowerCase()] : undefined;
-    return `weekly:${n ?? 0}`;
+  const normalized = freq.trim().toLowerCase();
+
+  if (normalized === 'daily') return 'daily';
+
+  if (normalized === 'weekly') {
+    if (!day) return undefined;
+    const n = _DAY_NAME[day.trim().toLowerCase()];
+    if (n === undefined) return undefined;
+    return `weekly:${n}`;
   }
-  if (freq === 'monthly') {
-    const match = day?.match(/^(\d+)/);
+
+  if (normalized === 'monthly') {
+    if (!day) return 'monthly:1';
+    const match = day.match(/\b([1-9]|[12]\d|3[01])(?:st|nd|rd|th)?\b/);
     return `monthly:${match?.[1] ?? '1'}`;
   }
+
   return undefined;
 }
 
@@ -46,11 +54,14 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   },
 
   addTask: async (title, assignee, recurring = false, schedule?, time?, duration?, logicalDayKey?, goalId?) => {
+    const cleanTitle = title.trim();
+    if (!cleanTitle) return;
+
     const key = logicalDayKey ?? (recurring ? firstOccurrenceKey(schedule) : getLogicalDayKey());
     const order = await db.tasks.where('logicalDayKey').equals(key).count();
     await db.tasks.put({
       id: crypto.randomUUID(),
-      title: title.trim(),
+      title: cleanTitle,
       assignee: assignee.trim() || 'Family',
       recurring,
       schedule: recurring ? (schedule ?? 'daily') : undefined,
@@ -59,14 +70,21 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       goalId: goalId || undefined,
       completed: false,
       logicalDayKey: key,
+      anchorLogicalDayKey: recurring ? key : undefined,
       sortOrder: order + 1,
     });
     await get().hydrate();
+    if (goalId) void useGoalStore.getState().refreshProgress();
   },
 
   editTask: async (id, title, assignee, time?, duration?, goalId?, recurring?, schedule?) => {
-    const patch: Partial<import('../db/database').TaskRow> = {
-      title: title.trim(),
+    const cleanTitle = title.trim();
+    if (!cleanTitle) return;
+
+    const existing = await db.tasks.get(id);
+
+    const patch: Partial<TaskRow> = {
+      title: cleanTitle,
       assignee: assignee.trim() || 'Family',
       time: time || undefined,
       duration: duration || undefined,
@@ -75,8 +93,14 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     if (recurring !== undefined) patch.recurring = recurring;
     // null = clear schedule (task became non-recurring); string = set new schedule
     if (schedule !== undefined) patch.schedule = schedule === null ? undefined : schedule;
+
     await db.tasks.update(id, patch);
-    if (goalId !== undefined) void useGoalStore.getState().refreshProgress();
+
+    // Refresh when a goal link changes in either direction
+    if (existing?.goalId || goalId !== undefined) {
+      void useGoalStore.getState().refreshProgress();
+    }
+
     await get().hydrate();
   },
 
@@ -90,16 +114,23 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   moveToNextDay: async (id) => {
     const row = await db.tasks.get(id);
     if (!row) return;
+
     const today = new Date();
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
     tomorrow.setHours(12, 0, 0, 0);
+
     const tomorrowKey = getLogicalDayKey(tomorrow);
-    if (row.recurring) {
-      await db.tasks.update(id, { logicalDayKey: tomorrowKey, completed: false });
-    } else {
-      await db.tasks.update(id, { logicalDayKey: tomorrowKey });
-    }
+    const order = await db.tasks.where('logicalDayKey').equals(tomorrowKey).count();
+
+    await db.tasks.update(id, {
+      logicalDayKey: tomorrowKey,
+      sortOrder: order + 1,
+      // Preserve the original anchor so interval schedules aren't shifted by manual moves
+      anchorLogicalDayKey: row.anchorLogicalDayKey ?? row.logicalDayKey,
+      ...(row.recurring ? { completed: false } : {}),
+    });
+
     await get().hydrate();
   },
 
