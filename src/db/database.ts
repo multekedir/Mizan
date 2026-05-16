@@ -65,12 +65,22 @@ export interface PersonRow {
   sortOrder: number;
 }
 
+export interface AuditLogRow {
+  id: string;
+  ts: number;           // Date.now()
+  action: 'add' | 'remove';
+  entity: 'person' | 'task' | 'goal';
+  title: string;        // person name, task title, or goal title
+  assignee?: string;    // for tasks / goals
+}
+
 export class MizanDB extends Dexie {
   tasks!: EntityTable<TaskRow, 'id'>;
   goals!: EntityTable<GoalRow, 'id'>;
   meta!: EntityTable<MetaRow, 'key'>;
   calendarCache!: EntityTable<CalendarCacheRow, 'id'>;
   people!: EntityTable<PersonRow, 'id'>;
+  auditLog!: EntityTable<AuditLogRow, 'id'>;
 
   constructor() {
     super('mizan-db');
@@ -92,7 +102,28 @@ export class MizanDB extends Dexie {
     this.version(5).stores({ tasks: 'id, logicalDayKey, assignee, completed, goalId' });
     // version 6: tasks.anchorLogicalDayKey + goals.anchorLogicalDayKey (no new index needed)
     this.version(6).stores({});
+    // version 7: people audit log
+    this.version(7).stores({ auditLog: 'id, ts' });
+    // version 8: audit log gains entity + title fields; migrate personName → title
+    this.version(8).stores({ auditLog: 'id, ts, entity' }).upgrade((tx) =>
+      tx.table('auditLog').toCollection().modify((row: Record<string, unknown>) => {
+        if (!row['entity']) {
+          row['entity'] = 'person';
+          row['title'] = row['personName'] ?? '';
+          delete row['personName'];
+        }
+      }),
+    );
   }
 }
 
 export const db = new MizanDB();
+
+export async function writeAudit(
+  action: AuditLogRow['action'],
+  entity: AuditLogRow['entity'],
+  title: string,
+  assignee?: string,
+): Promise<void> {
+  await db.auditLog.add({ id: crypto.randomUUID(), ts: Date.now(), action, entity, title, assignee });
+}

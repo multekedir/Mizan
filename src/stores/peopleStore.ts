@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { db, type PersonRow } from '../db/database';
+import { db, writeAudit, type PersonRow } from '../db/database';
 
 export const PERSON_COLORS = {
   rose: {
@@ -74,6 +74,7 @@ export const usePeopleStore = create<PeopleState>((set, get) => ({
     if (exists) return { ok: false, error: `"${trimmed}" already exists.` };
     const count = await db.people.count();
     await db.people.add({ id: crypto.randomUUID(), name: trimmed, color, sortOrder: count + 1 });
+    await writeAudit('add', 'person', trimmed);
     await get().hydrate();
     return { ok: true };
   },
@@ -91,7 +92,9 @@ export const usePeopleStore = create<PeopleState>((set, get) => ({
   },
 
   deletePerson: async (id) => {
+    const person = get().people.find((p) => p.id === id);
     await db.people.delete(id);
+    if (person) await writeAudit('remove', 'person', person.name);
     await get().hydrate();
   },
 

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { usePeopleStore, PERSON_COLORS, ALL_COLORS } from '../../../stores/peopleStore';
 import type { PersonColor } from '../../../stores/peopleStore';
 import type { PersonRow } from '../../../db/database';
+import { db } from '../../../db/database';
 
 function ColorPicker({
   value,
@@ -27,12 +28,17 @@ function ColorPicker({
   );
 }
 
+function hasName(assignee: string | undefined, name: string): boolean {
+  return (assignee ?? '').split(', ').some((a) => a.trim() === name);
+}
+
 function PersonRow({ person }: { person: PersonRow }) {
   const { updatePerson, deletePerson } = usePeopleStore();
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(person.name);
   const [color, setColor] = useState<PersonColor>(person.color as PersonColor);
   const [err, setErr] = useState<string | null>(null);
+  const [warning, setWarning] = useState<{ tasks: number; goals: number } | null>(null);
 
   function startEdit() {
     setName(person.name);
@@ -48,6 +54,23 @@ function PersonRow({ person }: { person: PersonRow }) {
       return;
     }
     setEditing(false);
+  }
+
+  async function requestRemove() {
+    const [tasks, goals] = await Promise.all([
+      db.tasks.filter((t) => hasName(t.assignee, person.name)).count(),
+      db.goals.filter((g) => hasName(g.assignee, person.name)).count(),
+    ]);
+    if (tasks > 0 || goals > 0) {
+      setWarning({ tasks, goals });
+    } else {
+      await deletePerson(person.id);
+    }
+  }
+
+  async function confirmRemove() {
+    await deletePerson(person.id);
+    setWarning(null);
   }
 
   if (editing) {
@@ -86,6 +109,37 @@ function PersonRow({ person }: { person: PersonRow }) {
     );
   }
 
+  if (warning) {
+    const parts = [
+      warning.tasks > 0 && `${warning.tasks} task${warning.tasks !== 1 ? 's' : ''}`,
+      warning.goals > 0 && `${warning.goals} goal${warning.goals !== 1 ? 's' : ''}`,
+    ].filter(Boolean).join(' and ');
+
+    return (
+      <li className="flex flex-col gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3">
+        <p className="text-sm font-semibold text-red-600">
+          {person.name} has {parts}. They will stay in the database unassigned.
+        </p>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => void confirmRemove()}
+            className="flex-1 rounded-2xl bg-red-500 py-2.5 text-sm font-semibold text-white active:scale-95"
+          >
+            Remove anyway
+          </button>
+          <button
+            type="button"
+            onClick={() => setWarning(null)}
+            className="flex-1 rounded-2xl bg-mizan-surfaceSoft py-2.5 text-sm font-semibold text-mizan-text active:scale-95"
+          >
+            Cancel
+          </button>
+        </div>
+      </li>
+    );
+  }
+
   return (
     <li className="flex items-center gap-3 rounded-2xl bg-mizan-surfaceSoft/40 px-4 py-3">
       <div
@@ -101,7 +155,7 @@ function PersonRow({ person }: { person: PersonRow }) {
       </button>
       <button
         type="button"
-        onClick={() => void deletePerson(person.id)}
+        onClick={() => void requestRemove()}
         className="rounded-2xl border border-red-200 bg-white px-4 py-2 text-sm font-semibold text-red-500 active:scale-95"
       >
         Remove

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { db, type TaskRow } from '../db/database';
+import { db, writeAudit, type TaskRow } from '../db/database';
 import { getLogicalDayKey, firstOccurrenceKey } from '../lib/logicalDay';
 import { parseBool } from '../lib/parseBool';
 import { useGoalStore } from './goalStore';
@@ -59,10 +59,11 @@ export const useTaskStore = create<TaskState>((set, get) => ({
 
     const key = logicalDayKey ?? (recurring ? firstOccurrenceKey(schedule) : getLogicalDayKey());
     const order = await db.tasks.where('logicalDayKey').equals(key).count();
+    const finalAssignee = assignee.trim() || 'Family';
     await db.tasks.put({
       id: crypto.randomUUID(),
       title: cleanTitle,
-      assignee: assignee.trim() || 'Family',
+      assignee: finalAssignee,
       recurring,
       schedule: recurring ? (schedule ?? 'daily') : undefined,
       time: time || undefined,
@@ -73,6 +74,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       anchorLogicalDayKey: recurring ? key : undefined,
       sortOrder: order + 1,
     });
+    await writeAudit('add', 'task', cleanTitle, finalAssignee);
     await get().hydrate();
     if (goalId) void useGoalStore.getState().refreshProgress();
   },
@@ -107,6 +109,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   deleteTask: async (id) => {
     const row = await db.tasks.get(id);
     await db.tasks.delete(id);
+    if (row) await writeAudit('remove', 'task', row.title, row.assignee);
     await get().hydrate();
     if (row?.goalId) void useGoalStore.getState().refreshProgress();
   },

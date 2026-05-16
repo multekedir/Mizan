@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { db, type GoalRow } from '../db/database';
+import { db, writeAudit, type GoalRow } from '../db/database';
 import { categoryKeyFromImport, inferCategoryKey, type CategoryKey } from '../lib/categories';
 import { getLogicalDayKey } from '../lib/logicalDay';
 import { parseBool } from '../lib/parseBool';
@@ -66,22 +66,27 @@ export const useGoalStore = create<GoalState>((set, get) => ({
     const key = getLogicalDayKey();
     const order = await db.goals.where('logicalDayKey').equals(key).count();
     const id = crypto.randomUUID();
+    const cleanTitle = title.trim();
+    const finalAssignee = assignee?.trim() || undefined;
     await db.goals.put({
       id,
-      title: title.trim(),
-      assignee: assignee?.trim() || undefined,
+      title: cleanTitle,
+      assignee: finalAssignee,
       category: categoryOverride ?? inferCategoryKey(title),
       recurring,
       completed: false,
       logicalDayKey: key,
       sortOrder: order + 1,
     });
+    await writeAudit('add', 'goal', cleanTitle, finalAssignee);
     await get().hydrate();
     return id;
   },
 
   deleteGoal: async (id) => {
+    const row = await db.goals.get(id);
     await db.goals.delete(id);
+    if (row) await writeAudit('remove', 'goal', row.title, row.assignee);
     // Clear goalId from any tasks that were linked to this goal
     const linked = await db.tasks.where('goalId').equals(id).toArray();
     for (const t of linked) await db.tasks.update(t.id, { goalId: undefined });

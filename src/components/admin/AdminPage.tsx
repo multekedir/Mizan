@@ -3,6 +3,7 @@ import type { LucideIcon } from 'lucide-react';
 import {
   Calendar,
   ClipboardList,
+  History,
   Landmark,
   Settings,
   Target,
@@ -16,10 +17,11 @@ import { ImportTasksSection } from './sections/ImportTasksSection';
 import { ImportGoalsSection } from './sections/ImportGoalsSection';
 import { CalendarSection } from './sections/CalendarSection';
 import { ResetSection } from './sections/ResetSection';
+import { AuditSection } from './sections/AuditSection';
 
 export { AdminTrigger } from './AdminTrigger';
 
-type SectionId = 'people' | 'prayers' | 'tasks' | 'goals' | 'calendar' | 'reset';
+type SectionId = 'people' | 'prayers' | 'tasks' | 'goals' | 'calendar' | 'audit' | 'reset';
 
 type MenuItem = {
   id: SectionId;
@@ -60,6 +62,12 @@ const MENU_ITEMS: MenuItem[] = [
     description: 'Connect and sync family calendar',
   },
   {
+    id: 'audit',
+    title: 'Activity Log',
+    icon: History,
+    description: 'See what was added or removed',
+  },
+  {
     id: 'reset',
     title: 'Reset All Data',
     icon: Trash2,
@@ -73,6 +81,7 @@ const SECTION_MAP: Record<SectionId, ComponentType> = {
   tasks: ImportTasksSection,
   goals: ImportGoalsSection,
   calendar: CalendarSection,
+  audit: AuditSection,
   reset: ResetSection,
 };
 
