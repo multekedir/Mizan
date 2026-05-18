@@ -1,4 +1,5 @@
 import { createElement, useEffect, useMemo, useRef, useState } from 'react';
+import { X } from 'lucide-react';
 import {
   formatCountdown,
   getAthanPrayer,
@@ -57,6 +58,7 @@ export function HeaderBar() {
 
   const [now, setNow] = useState(() => new Date());
   const [weather, setWeather] = useState<WeatherSnapshot | null>(null);
+  const [weatherOpen, setWeatherOpen] = useState(false);
   const [nextInfo, setNextInfo] = useState(() => getNextPrayerInfo(new Date()));
   const [athanPrayer, setAthanPrayer] = useState<PrayerEntry | null>(() => getAthanPrayer(new Date()));
   const [athanDismissed, setAthanDismissed] = useState(false);
@@ -228,8 +230,14 @@ export function HeaderBar() {
 
       {/* ── Right: Weather + Clock ── */}
       <div className="card-mizan text-mizan-text flex items-center justify-between gap-4 px-4 py-3">
-        {/* Weather stack */}
-        <div className="flex flex-col gap-0.5">
+        {/* Weather stack — clickable */}
+        <button
+          type="button"
+          onClick={() => weather && setWeatherOpen(true)}
+          className="flex flex-col gap-0.5 text-left active:scale-[0.97] transition-transform disabled:cursor-default"
+          disabled={!weather}
+          aria-label="Show weather details"
+        >
           <p className="text-xs font-semibold uppercase tracking-widest opacity-50">
             Weather
           </p>
@@ -239,12 +247,12 @@ export function HeaderBar() {
                 <WeatherLucide name={weather.lucideIcon} className="text-mizan-text h-9 w-9 shrink-0" />
                 {weather.description}
               </p>
-              <p className="text-lg font-bold">{weather.tempC}°C</p>
+              <p className="text-lg font-bold">{weather.tempF}°F</p>
             </>
           ) : (
             <p className="text-xs opacity-40">Loading…</p>
           )}
-        </div>
+        </button>
 
         {/* Clock */}
         <div className="flex items-start tabular-nums">
@@ -256,6 +264,66 @@ export function HeaderBar() {
           </span>
         </div>
       </div>
+
+      {/* ── Weather Detail Popup ── */}
+      {weatherOpen && weather && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          onClick={() => setWeatherOpen(false)}
+        >
+          <div
+            className="card-mizan text-mizan-text w-72 p-6 flex flex-col gap-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-widest opacity-50">
+                Weather Details
+              </p>
+              <button
+                type="button"
+                onClick={() => setWeatherOpen(false)}
+                className="opacity-40 hover:opacity-100 transition-opacity"
+                aria-label="Close"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Main condition */}
+            <div className="flex items-center gap-4">
+              <WeatherLucide
+                name={weather.lucideIcon}
+                className="text-mizan-accent h-14 w-14 shrink-0"
+              />
+              <div>
+                <p className="text-4xl font-bold leading-none">{weather.tempF}°F</p>
+                <p className="mt-1 text-sm capitalize opacity-60">{weather.description}</p>
+              </div>
+            </div>
+
+            {/* Detail grid */}
+            <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
+              <div>
+                <p className="text-xs opacity-50">Feels Like</p>
+                <p className="font-semibold">{weather.feelsLikeF}°F</p>
+              </div>
+              <div>
+                <p className="text-xs opacity-50">Humidity</p>
+                <p className="font-semibold">{weather.humidity}%</p>
+              </div>
+              <div>
+                <p className="text-xs opacity-50">Wind</p>
+                <p className="font-semibold">{weather.windMph} mph</p>
+              </div>
+              <div>
+                <p className="text-xs opacity-50">Precipitation</p>
+                <p className="font-semibold">{weather.precipitation} in</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

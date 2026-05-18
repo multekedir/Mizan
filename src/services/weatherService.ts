@@ -76,8 +76,13 @@ export async function fetchCurrentWeather(): Promise<WeatherSnapshot | null> {
     const url = new URL('https://api.open-meteo.com/v1/forecast');
     url.searchParams.set('latitude', currentLat.toString());
     url.searchParams.set('longitude', currentLon.toString());
-    url.searchParams.set('current', 'temperature_2m,weather_code');
-    url.searchParams.set('temperature_unit', 'celsius');
+    url.searchParams.set(
+      'current',
+      'temperature_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,precipitation,weather_code',
+    );
+    url.searchParams.set('temperature_unit', 'fahrenheit');
+    url.searchParams.set('wind_speed_unit', 'mph');
+    url.searchParams.set('precipitation_unit', 'inch');
 
     const res = await fetch(url.toString(), {
       cache: 'no-store',
@@ -86,23 +91,35 @@ export async function fetchCurrentWeather(): Promise<WeatherSnapshot | null> {
     if (!res.ok) throw new Error('Weather API error');
 
     const data = (await res.json()) as {
-      current?: { temperature_2m?: number; weather_code?: number };
+      current?: {
+        temperature_2m?: number;
+        apparent_temperature?: number;
+        relative_humidity_2m?: number;
+        wind_speed_10m?: number;
+        precipitation?: number;
+        weather_code?: number;
+      };
     };
 
-    const rawTemp = data.current?.temperature_2m;
-    const parsedTemp =
-      typeof rawTemp === 'number'
-        ? rawTemp
-        : typeof rawTemp === 'string'
-          ? parseFloat(rawTemp)
-          : NaN;
-    const temp = Number.isFinite(parsedTemp) ? Math.round(parsedTemp) : 0;
+    function parseNum(val: unknown, fallback = 0): number {
+      const n = typeof val === 'string' ? parseFloat(val) : Number(val);
+      return Number.isFinite(n) ? n : fallback;
+    }
 
+    const temp = Math.round(parseNum(data.current?.temperature_2m));
+    const feelsLike = Math.round(parseNum(data.current?.apparent_temperature));
+    const humidity = Math.round(parseNum(data.current?.relative_humidity_2m));
+    const wind = Math.round(parseNum(data.current?.wind_speed_10m));
+    const precip = parseFloat(parseNum(data.current?.precipitation).toFixed(2));
     const code = normalizeWmoCode(data.current?.weather_code);
 
     const snapshot: WeatherSnapshot = {
       description: getWeatherDescription(code),
-      tempC: temp,
+      tempF: temp,
+      feelsLikeF: feelsLike,
+      humidity,
+      windMph: wind,
+      precipitation: precip,
       iconCode: String(code),
       lucideIcon: getWeatherLucideName(code),
       fetchedAt: now,

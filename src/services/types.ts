@@ -13,7 +13,11 @@ export type WeatherLucideIconName =
 
 export interface WeatherSnapshot {
   description: string;
-  tempC: number;
+  tempF: number;
+  feelsLikeF: number;
+  humidity: number;       // percent
+  windMph: number;
+  precipitation: number;  // inches
   /** WMO weather code as string */
   iconCode: string;
   lucideIcon: WeatherLucideIconName;
