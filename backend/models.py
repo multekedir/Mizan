@@ -119,6 +119,12 @@ class KBDocument(BaseModel):
     category: str = "general"
     content: str
     embedding: list[float] = []   # cached; omitted from API responses
+    # temporal metadata
+    doc_kind: str = "static"        # "static" | "routine" | "event" | "versioned"
+    tags: list[str] = []            # e.g. ["friday", "prayer", "cleaning"]
+    valid_from: str | None = None   # ISO date — doc inactive before this date
+    valid_until: str | None = None  # ISO date — doc inactive after this date
+    priority: int = 0               # 0=normal, 1=high; boosts retrieval score
 
 
 class KBDocumentPublic(BaseModel):
@@ -126,16 +132,31 @@ class KBDocumentPublic(BaseModel):
     id: str
     category: str
     content: str
+    doc_kind: str = "static"
+    tags: list[str] = []
+    valid_from: str | None = None
+    valid_until: str | None = None
+    priority: int = 0
 
 
 class KBAddRequest(BaseModel):
     category: str = "general"
     content: str
+    doc_kind: str = "static"
+    tags: list[str] = []
+    valid_from: str | None = None
+    valid_until: str | None = None
+    priority: int = 0
 
 
 class KBUpdateRequest(BaseModel):
     category: str | None = None
     content: str | None = None
+    doc_kind: str | None = None
+    tags: list[str] | None = None
+    valid_from: str | None = None
+    valid_until: str | None = None
+    priority: int | None = None
 
 
 class KBListResponse(BaseModel):

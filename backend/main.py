@@ -9,7 +9,7 @@ from pathlib import Path
 import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 
 from assistant import chat, chat_stream
 from config import settings
@@ -97,6 +97,28 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# ── Root (avoid “broken app” when opening :8000 in the browser) ───────────────
+
+@app.get("/", response_class=HTMLResponse)
+async def root():
+    return """<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Mizan API</title>
+<style>body{font-family:system-ui,sans-serif;max-width:32rem;margin:3rem auto;padding:0 1rem;color:#173B34}
+a{color:#2A6156}code{background:#F7ECD6;padding:.15em .4em;border-radius:.25rem}</style></head>
+<body>
+  <h1>Mizan API is running</h1>
+  <p>This port is the <strong>assistant backend</strong>, not the kiosk UI.</p>
+  <p>Open the app in your browser:</p>
+  <ul>
+    <li><a href="http://localhost:5173">http://localhost:5173</a> — <code>npm run dev</code></li>
+    <li><a href="http://localhost:3000">http://localhost:3000</a> — <code>make start</code></li>
+  </ul>
+  <p><a href="/health">/health</a> · API under <code>/v1/…</code></p>
+</body>
+</html>"""
 
 
 # ── Health ────────────────────────────────────────────────────────────────────
@@ -234,16 +256,28 @@ async def list_knowledge(category: str | None = None):
     if category:
         docs = [d for d in docs if d.category == category]
     return KBListResponse(
-        documents=[KBDocumentPublic(id=d.id, category=d.category, content=d.content) for d in docs],
+        documents=[
+            KBDocumentPublic(**{k: v for k, v in d.model_dump().items() if k != "embedding"})
+            for d in docs
+        ],
         total=len(docs),
     )
 
 
 @app.post("/v1/knowledge", response_model=KBDocumentPublic, status_code=201)
 async def add_knowledge(req: KBAddRequest):
-    doc = KBDocument(id=str(uuid.uuid4()), category=req.category, content=req.content)
+    doc = KBDocument(
+        id=str(uuid.uuid4()),
+        category=req.category,
+        content=req.content,
+        doc_kind=req.doc_kind,
+        tags=req.tags,
+        valid_from=req.valid_from,
+        valid_until=req.valid_until,
+        priority=req.priority,
+    )
     saved = kb.add(doc)
-    return KBDocumentPublic(id=saved.id, category=saved.category, content=saved.content)
+    return KBDocumentPublic(**{k: v for k, v in saved.model_dump().items() if k != "embedding"})
 
 
 @app.get("/v1/knowledge/{doc_id}", response_model=KBDocumentPublic)
@@ -251,15 +285,15 @@ async def get_knowledge(doc_id: str):
     doc = kb.get(doc_id)
     if doc is None:
         raise HTTPException(404, detail="Document not found.")
-    return KBDocumentPublic(id=doc.id, category=doc.category, content=doc.content)
+    return KBDocumentPublic(**{k: v for k, v in doc.model_dump().items() if k != "embedding"})
 
 
 @app.put("/v1/knowledge/{doc_id}", response_model=KBDocumentPublic)
 async def update_knowledge(doc_id: str, req: KBUpdateRequest):
-    doc = kb.update(doc_id, req.category, req.content)
+    doc = kb.update(doc_id, req)
     if doc is None:
         raise HTTPException(404, detail="Document not found.")
-    return KBDocumentPublic(id=doc.id, category=doc.category, content=doc.content)
+    return KBDocumentPublic(**{k: v for k, v in doc.model_dump().items() if k != "embedding"})
 
 
 @app.delete("/v1/knowledge/{doc_id}")

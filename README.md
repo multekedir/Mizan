@@ -43,12 +43,17 @@ mizan/
 │   ├── tests/                  # pytest test suite
 │   └── dev.sh                  # Dev server with hot-reload
 ├── deploy.sh                   # Full deploy script (build + start both services)
+├── install.bat                 # Windows: first-time install
+├── mizan.bat                   # Windows: dev / start / stop (wraps scripts/windows/mizan.ps1)
+├── scripts/windows/mizan.ps1   # Windows PowerShell tasks (install, dev, deploy)
 └── .env.example                # Frontend environment variables template
 ```
 
 ---
 
 ## Running locally
+
+**Windows:** run `install.bat`, then `mizan.bat dev` + `mizan.bat dev-ui`. See [docs/WINDOWS_INSTALL.md](docs/WINDOWS_INSTALL.md) for prerequisites, Ollama, and troubleshooting.
 
 ### Prerequisites
 

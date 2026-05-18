@@ -14,5 +14,14 @@ source .venv/bin/activate
 python3 -m pip install -q --upgrade pip
 python3 -m pip install -q -r requirements.txt
 
-echo "Mizan backend (dev) → http://localhost:8000"
-exec uvicorn main:app --reload --host 127.0.0.1 --port 8000
+HOST="${BACKEND_HOST:-127.0.0.1}"
+PORT="${BACKEND_PORT:-8000}"
+
+echo ""
+echo "  Listening on port ${PORT}"
+echo "  Mizan API  →  http://${HOST}:${PORT}"
+echo "  Health     →  http://${HOST}:${PORT}/health"
+echo "  Mizan UI   →  http://localhost:5173  (make dev-ui, VITE_PORT)"
+echo "               http://localhost:3000  (make start, SERVE_PORT)"
+echo ""
+exec uvicorn main:app --reload --host "$HOST" --port "$PORT"

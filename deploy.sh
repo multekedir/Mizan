@@ -23,6 +23,14 @@ info()  { echo -e "${GREEN}[deploy]${NC} $*"; }
 warn()  { echo -e "${YELLOW}[deploy]${NC} $*"; }
 error() { echo -e "${RED}[deploy]${NC} $*" >&2; }
 
+print_ports() {
+  echo ""
+  echo -e "${BLUE}  Ports${NC}"
+  $DO_FRONTEND && echo -e "    UI (frontend, port ${SERVE_PORT})  →  http://${BACKEND_HOST}:${SERVE_PORT}"
+  $DO_BACKEND  && echo -e "    API (backend)  →  http://${BACKEND_HOST}:${BACKEND_PORT}"
+  echo ""
+}
+
 # ── helpers ───────────────────────────────────────────────────────────────────
 
 stop_process() {
@@ -103,6 +111,8 @@ for arg in "$@"; do
   esac
 done
 
+print_ports
+
 # ── pre-flight checks ─────────────────────────────────────────────────────────
 
 if $DO_FRONTEND; then
@@ -139,7 +149,7 @@ if $DO_FRONTEND; then
 
   free_listen_port "$SERVE_PORT"
 
-  info "Starting frontend on port $SERVE_PORT..."
+  info "Starting frontend — listening on port $SERVE_PORT..."
   nohup "$SERVE_BIN" -s dist -l "tcp://$BACKEND_HOST:$SERVE_PORT" > "$FRONTEND_LOG" 2>&1 &
   echo $! > "$FRONTEND_PID"
   info "Frontend PID $(cat "$FRONTEND_PID") → http://$BACKEND_HOST:$SERVE_PORT"
@@ -169,7 +179,7 @@ if $DO_BACKEND; then
 
   free_listen_port "$BACKEND_PORT"
 
-  info "Starting backend on $BACKEND_HOST:$BACKEND_PORT..."
+  info "Starting backend — listening on port $BACKEND_PORT..."
   BACKEND_HOST="$BACKEND_HOST" BACKEND_PORT="$BACKEND_PORT" \
     nohup uvicorn main:app --host "$BACKEND_HOST" --port "$BACKEND_PORT" \
     > "$BACKEND_LOG" 2>&1 &
@@ -191,7 +201,7 @@ echo ""
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e "${GREEN} Mizan is running${NC}"
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-$DO_FRONTEND && echo -e "  Frontend  →  http://$BACKEND_HOST:$SERVE_PORT  (log: $FRONTEND_LOG)"
-$DO_BACKEND  && echo -e "  Backend   →  http://$BACKEND_HOST:$BACKEND_PORT  (log: $BACKEND_LOG)"
+$DO_FRONTEND && echo -e "  UI on port ${SERVE_PORT}  →  http://$BACKEND_HOST:$SERVE_PORT  (log: $FRONTEND_LOG)"
+$DO_BACKEND  && echo -e "  API on port ${BACKEND_PORT}  →  http://$BACKEND_HOST:$BACKEND_PORT  (log: $BACKEND_LOG)"
 echo -e "  Stop      →  make stop  (or ./deploy.sh --stop)"
 echo ""

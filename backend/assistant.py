@@ -311,12 +311,17 @@ async def _prepare_chat(
 ) -> _ChatPrep:
     mode = _get_chat_mode(req, notes)
     cfg = settings.ollama
+    current_time = req.live_context.current_time
 
     if mode in _FAST_MODES:
-        kb_docs = kb.retrieve_keywords(req.message)
+        kb_docs = kb.retrieve_keywords(req.message, current_time)
         model = cfg.chat_model_fast
+    elif mode == ChatMode.TASKS:
+        # Multi-query expansion for task planning: wider retrieval net improves suggestions
+        kb_docs = await kb.retrieve_expanded(req.message, current_time)
+        model = cfg.chat_model
     else:
-        kb_docs = await kb.retrieve(req.message)
+        kb_docs = await kb.retrieve(req.message, current_time)
         model = cfg.chat_model
 
     member_list = (
