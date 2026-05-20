@@ -268,57 +268,61 @@ export function HeaderBar() {
       {/* ── Weather Detail Popup ── */}
       {weatherOpen && weather && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
           onClick={() => setWeatherOpen(false)}
         >
           <div
-            className="card-mizan text-mizan-text w-72 p-6 flex flex-col gap-5"
+            className="bg-mizan-bg text-mizan-text w-[440px] rounded-kiosk-xl p-8 flex flex-col gap-6 shadow-kiosk"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Header */}
+            {/* Header row */}
             <div className="flex items-center justify-between">
-              <p className="text-xs font-semibold uppercase tracking-widest opacity-50">
+              <p className="text-xs font-semibold uppercase tracking-widest text-mizan-textMuted">
                 Weather Details
               </p>
               <button
                 type="button"
                 onClick={() => setWeatherOpen(false)}
-                className="opacity-40 hover:opacity-100 transition-opacity"
+                className="text-mizan-textMuted hover:text-mizan-text transition-colors"
                 aria-label="Close"
               >
-                <X className="h-4 w-4" />
+                <X className="h-5 w-5" />
               </button>
             </div>
 
             {/* Main condition */}
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-5">
               <WeatherLucide
                 name={weather.lucideIcon}
-                className="text-mizan-accent h-14 w-14 shrink-0"
+                className="text-mizan-accent h-16 w-16 shrink-0"
               />
               <div>
-                <p className="text-4xl font-bold leading-none">{weather.tempF}°F</p>
-                <p className="mt-1 text-sm capitalize opacity-60">{weather.description}</p>
+                <p className="text-6xl font-bold leading-none">{weather.tempF}°F</p>
+                <p className="mt-2 text-base text-mizan-textMuted capitalize">{weather.description}</p>
               </div>
             </div>
 
-            {/* Detail grid */}
-            <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
-              <div>
-                <p className="text-xs opacity-50">Feels Like</p>
-                <p className="font-semibold">{weather.feelsLikeF}°F</p>
+            {/* Section divider */}
+            <div className="border-t border-mizan-border" />
+
+            {/* Stats — 2×2 with border dividers */}
+            <div className="grid grid-cols-2">
+              <div className="pr-8 pb-5">
+                <p className="text-sm text-mizan-textMuted">Feels Like</p>
+                <p className="mt-1 text-xl font-bold">{weather.feelsLikeF}°F</p>
               </div>
-              <div>
-                <p className="text-xs opacity-50">Humidity</p>
-                <p className="font-semibold">{weather.humidity}%</p>
+              <div className="pl-8 pb-5 border-l border-mizan-border">
+                <p className="text-sm text-mizan-textMuted">Humidity</p>
+                <p className="mt-1 text-xl font-bold">{weather.humidity}%</p>
               </div>
-              <div>
-                <p className="text-xs opacity-50">Wind</p>
-                <p className="font-semibold">{weather.windMph} mph</p>
+              <div className="col-span-2 border-t border-mizan-border" />
+              <div className="pr-8 pt-5">
+                <p className="text-sm text-mizan-textMuted">Wind</p>
+                <p className="mt-1 text-xl font-bold">{weather.windMph} mph</p>
               </div>
-              <div>
-                <p className="text-xs opacity-50">Precipitation</p>
-                <p className="font-semibold">{weather.precipitation} in</p>
+              <div className="pl-8 pt-5 border-l border-mizan-border">
+                <p className="text-sm text-mizan-textMuted">Precipitation</p>
+                <p className="mt-1 text-xl font-bold">{weather.precipitation} in</p>
               </div>
             </div>
           </div>
