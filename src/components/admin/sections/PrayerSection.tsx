@@ -127,6 +127,28 @@ export function PrayerSection() {
               aria-label="Show Hijri date"
             />
           </div>
+
+          <div className="bg-mizan-surfaceSoft flex items-center justify-between rounded-2xl px-5 py-4">
+            <div>
+              <p className="font-medium">Screensaver</p>
+              <p className="text-mizan-text/60 text-xs">Show clock &amp; weather after idle</p>
+            </div>
+            <select
+              id="screensaver-delay"
+              value={prayerConfig.screensaverDelay}
+              onChange={(e) =>
+                void updatePrayerConfig({ screensaverDelay: parseInt(e.target.value, 10) })
+              }
+              className="border-mizan-surfaceSoft bg-mizan-bg text-mizan-text focus:border-mizan-accent focus:ring-mizan-accentGlow/30 w-28 shrink-0 rounded-2xl border px-4 py-2.5 text-sm font-medium outline-none focus:ring-2"
+            >
+              <option value={1}>1 min</option>
+              <option value={2}>2 min</option>
+              <option value={5}>5 min</option>
+              <option value={10}>10 min</option>
+              <option value={15}>15 min</option>
+              <option value={0}>Never</option>
+            </select>
+          </div>
         </div>
       </div>
 

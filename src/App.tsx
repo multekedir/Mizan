@@ -31,10 +31,16 @@ export default function App() {
   const [adminOpen, setAdminOpen] = useState(false);
   const [showMothersDayIntro, setShowMothersDayIntro] = useState(shouldShowMothersDayIntro);
   const [screensaverActive, setScreensaverActive] = useState(false);
+  const screensaverDelay = useSettingsStore((s) => s.prayerConfig.screensaverDelay);
 
-  // Idle screensaver: activates after 5 minutes of no interaction
+  // Idle screensaver — restarts whenever the delay setting changes
   useEffect(() => {
-    const IDLE_MS = 5 * 60 * 1000;
+    if (screensaverDelay === 0) {
+      setScreensaverActive(false);
+      return;
+    }
+
+    const IDLE_MS = screensaverDelay * 60 * 1000;
     let timer: number;
 
     function resetTimer() {
@@ -51,7 +57,7 @@ export default function App() {
       window.clearTimeout(timer);
       events.forEach((e) => document.removeEventListener(e, resetTimer));
     };
-  }, []);
+  }, [screensaverDelay]);
 
   const dismissMothersDayIntro = useCallback(() => {
     setShowMothersDayIntro(false);

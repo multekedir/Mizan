@@ -42,6 +42,8 @@ export interface PrayerConfig {
   athanVolume: number;
   athanStyle: AthanStyle;
   notificationsEnabled: boolean;
+  /** Minutes of idle before screensaver activates; 0 = disabled */
+  screensaverDelay: number;
 }
 
 const DEFAULT_PRAYER_CONFIG: PrayerConfig = {
@@ -55,6 +57,7 @@ const DEFAULT_PRAYER_CONFIG: PrayerConfig = {
   athanVolume: 70,
   athanStyle: 'mecca',
   notificationsEnabled: true,
+  screensaverDelay: 5,
 };
 
 function normalizePrayerConfig(raw: Partial<PrayerConfig>): PrayerConfig {
@@ -98,6 +101,13 @@ function normalizePrayerConfig(raw: Partial<PrayerConfig>): PrayerConfig {
       ? raw.notificationsEnabled
       : DEFAULT_PRAYER_CONFIG.notificationsEnabled;
 
+  const VALID_DELAYS = [0, 1, 2, 5, 10, 15] as const;
+  let screensaverDelay =
+    typeof raw.screensaverDelay === 'number' ? raw.screensaverDelay : DEFAULT_PRAYER_CONFIG.screensaverDelay;
+  if (!VALID_DELAYS.includes(screensaverDelay as (typeof VALID_DELAYS)[number])) {
+    screensaverDelay = DEFAULT_PRAYER_CONFIG.screensaverDelay;
+  }
+
   return {
     included: safeIncluded,
     madhab,
@@ -109,6 +119,7 @@ function normalizePrayerConfig(raw: Partial<PrayerConfig>): PrayerConfig {
     athanVolume,
     athanStyle,
     notificationsEnabled,
+    screensaverDelay,
   };
 }
 
