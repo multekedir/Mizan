@@ -22,6 +22,7 @@ import {
   MothersDayIntro,
   shouldShowMothersDayIntro,
 } from './components/MothersDayIntro';
+import { Screensaver } from './components/screensaver/Screensaver';
 
 export default function App() {
   useWakeLock();
@@ -29,6 +30,28 @@ export default function App() {
   const [importOpen, setImportOpen] = useState(false);
   const [adminOpen, setAdminOpen] = useState(false);
   const [showMothersDayIntro, setShowMothersDayIntro] = useState(shouldShowMothersDayIntro);
+  const [screensaverActive, setScreensaverActive] = useState(false);
+
+  // Idle screensaver: activates after 5 minutes of no interaction
+  useEffect(() => {
+    const IDLE_MS = 5 * 60 * 1000;
+    let timer: number;
+
+    function resetTimer() {
+      setScreensaverActive(false);
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => setScreensaverActive(true), IDLE_MS);
+    }
+
+    const events = ['pointerdown', 'keydown', 'touchmove'] as const;
+    events.forEach((e) => document.addEventListener(e, resetTimer, { passive: true }));
+    resetTimer();
+
+    return () => {
+      window.clearTimeout(timer);
+      events.forEach((e) => document.removeEventListener(e, resetTimer));
+    };
+  }, []);
 
   const dismissMothersDayIntro = useCallback(() => {
     setShowMothersDayIntro(false);
@@ -78,6 +101,12 @@ export default function App() {
       <AnimatePresence>
         {showMothersDayIntro && (
           <MothersDayIntro key="mothers-day-intro" onDismiss={dismissMothersDayIntro} />
+        )}
+        {screensaverActive && (
+          <Screensaver
+            key="screensaver"
+            onDismiss={() => setScreensaverActive(false)}
+          />
         )}
       </AnimatePresence>
 
