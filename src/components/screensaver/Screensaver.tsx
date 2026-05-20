@@ -86,26 +86,26 @@ export function Screensaver({ onDismiss }: Props) {
       />
 
       {/* ── Clock ── */}
-      <div className="flex flex-col items-center gap-1">
+      <div className="flex flex-col items-center gap-2">
         <div className="flex items-start leading-none">
           <span
             className="tabular-nums text-mizan-textOnDark"
-            style={{ fontSize: '11rem', fontWeight: 700, letterSpacing: '0.08em', lineHeight: 1 }}
+            style={{ fontSize: '11rem', fontWeight: 700, letterSpacing: '0.03em', lineHeight: 1 }}
           >
             {timeStr}
           </span>
-          <span className="ml-4 mt-8 text-kiosk-2xl font-bold text-mizan-textOnDark/55">
+          <span className="ml-3 mt-8 text-kiosk-2xl font-bold text-mizan-textOnDark/55">
             {ampm}
           </span>
         </div>
-        <p className="text-kiosk-xl text-mizan-textOnDark/45 tracking-wide">{dateStr}</p>
+        <p className="text-kiosk-2xl font-semibold text-mizan-textOnDark/80 tracking-wide">{dateStr}</p>
         {hijri && (
-          <p className="text-kiosk-base text-mizan-textOnDark/45 tracking-wide">{hijri}</p>
+          <p className="text-kiosk-lg text-mizan-textOnDark/55 tracking-wide">{hijri}</p>
         )}
       </div>
 
-      {/* Thin divider */}
-      <div className="h-px w-72 rounded-full bg-mizan-textOnDark/10" />
+      {/* Divider with warm centre glow */}
+      <div className="h-px w-80 rounded-full bg-gradient-to-r from-transparent via-mizan-accent/40 to-transparent" />
 
       {/* ── Weather + Prayer ── */}
       <div className="flex items-center gap-20">
