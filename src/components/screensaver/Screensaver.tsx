@@ -100,7 +100,7 @@ export function Screensaver({ onDismiss }: Props) {
         </div>
         <p className="text-kiosk-xl text-mizan-textOnDark/45 tracking-wide">{dateStr}</p>
         {hijri && (
-          <p className="text-kiosk-sm text-mizan-textOnDark/25 tracking-wide">{hijri}</p>
+          <p className="text-kiosk-base text-mizan-textOnDark/45 tracking-wide">{hijri}</p>
         )}
       </div>
 
@@ -117,10 +117,10 @@ export function Screensaver({ onDismiss }: Props) {
               name={weather.lucideIcon}
               className="h-14 w-14 text-mizan-accentGlow"
             />
-            <p className="text-kiosk-3xl font-bold text-mizan-textOnDark leading-none">
+            <p className="text-kiosk-3xl font-bold text-mizan-accentGlow leading-none">
               {weather.tempF}°F
             </p>
-            <p className="text-kiosk-base text-mizan-textOnDark/45 capitalize">
+            <p className="text-kiosk-base text-mizan-textOnDark/70 capitalize">
               {weather.description}
             </p>
           </div>
