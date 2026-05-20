@@ -89,7 +89,7 @@ export function Screensaver({ onDismiss }: Props) {
       <div className="flex flex-col items-center gap-1">
         <div className="flex items-start leading-none">
           <span
-            className="font-display tabular-nums text-mizan-textOnDark"
+            className="tabular-nums text-mizan-textOnDark"
             style={{ fontSize: '11rem', fontWeight: 700, letterSpacing: '0.08em', lineHeight: 1 }}
           >
             {timeStr}
