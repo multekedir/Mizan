@@ -33,6 +33,13 @@ export default function App() {
   const [screensaverActive, setScreensaverActive] = useState(false);
   const screensaverDelay = useSettingsStore((s) => s.prayerConfig.screensaverDelay);
 
+  // Manual screensaver trigger (fired from Settings → Preview button)
+  useEffect(() => {
+    function onShow() { setScreensaverActive(true); }
+    window.addEventListener('mizan:screensaver:show', onShow);
+    return () => window.removeEventListener('mizan:screensaver:show', onShow);
+  }, []);
+
   // Idle screensaver — restarts whenever the delay setting changes
   useEffect(() => {
     if (screensaverDelay === 0) {

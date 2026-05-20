@@ -128,11 +128,19 @@ export function PrayerSection() {
             />
           </div>
 
-          <div className="bg-mizan-surfaceSoft flex items-center justify-between rounded-2xl px-5 py-4">
+          <div className="bg-mizan-surfaceSoft flex items-center justify-between gap-3 rounded-2xl px-5 py-4">
             <div>
               <p className="font-medium">Screensaver</p>
               <p className="text-mizan-text/60 text-xs">Show clock &amp; weather after idle</p>
             </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={() => window.dispatchEvent(new Event('mizan:screensaver:show'))}
+                className="rounded-xl bg-mizan-surface px-3 py-2 text-xs font-semibold text-mizan-textMuted transition-colors hover:bg-mizan-accent hover:text-mizan-textOnDark active:scale-95"
+              >
+                Preview
+              </button>
             <select
               id="screensaver-delay"
               value={prayerConfig.screensaverDelay}
@@ -148,6 +156,7 @@ export function PrayerSection() {
               <option value={15}>15 min</option>
               <option value={0}>Never</option>
             </select>
+            </div>
           </div>
         </div>
       </div>
