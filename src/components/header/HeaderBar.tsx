@@ -99,6 +99,8 @@ export function HeaderBar() {
 
       if (newKey !== null && newKey !== prevAthanKey.current) {
         setAthanDismissed(false);
+        // Wake the screensaver so the athan card is visible and tappable
+        window.dispatchEvent(new Event('mizan:screensaver:dismiss'));
         const missedDuringSleep =
           wokenAt.current !== null && athan!.time < wokenAt.current;
         if (mayPlaySound && !missedDuringSleep) {

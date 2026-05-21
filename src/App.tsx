@@ -34,10 +34,16 @@ export default function App() {
   const screensaverDelay = useSettingsStore((s) => s.prayerConfig.screensaverDelay);
 
   // Manual screensaver trigger (fired from Settings → Preview button)
+  // and auto-dismiss when athan starts so the athan card is visible
   useEffect(() => {
     function onShow() { setScreensaverActive(true); }
+    function onDismiss() { setScreensaverActive(false); }
     window.addEventListener('mizan:screensaver:show', onShow);
-    return () => window.removeEventListener('mizan:screensaver:show', onShow);
+    window.addEventListener('mizan:screensaver:dismiss', onDismiss);
+    return () => {
+      window.removeEventListener('mizan:screensaver:show', onShow);
+      window.removeEventListener('mizan:screensaver:dismiss', onDismiss);
+    };
   }, []);
 
   // Idle screensaver — restarts whenever the delay setting changes
